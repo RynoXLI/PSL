@@ -78,6 +78,17 @@ class DataLoader:
             ("standard_scaler", numerical_preprocessor, numerical_columns),
         ])
         return preprocessor
+    
+
+def predict_regression(train_X, train_y, preprocessor):
+    model_regression = make_pipeline(preprocessor, ElasticNet(alpha=0.001, l1_ratio=0.1, max_iter=10000))
+    model_regression.fit(train_X, train_y)
+    return model_regression.predict(test_X)
+
+def predict_tree(train_X, train_y, preprocessor):
+    model_tree = make_pipeline(preprocessor, LinearRegression(n_jobs=4)) # TODO: replace with actual tree
+    model_tree.fit(train_X, train_y)
+    return model_tree.predict(test_X)
 
 def summarize_rmse(rmse_array, desc):
     start_idx = (0, len(rmse_array) // 2)
@@ -91,8 +102,9 @@ def summarize_rmse(rmse_array, desc):
               f" Mean: {np.mean(half):.4f}\n"
               f"Worst: Fold {np.argmax(half) + idx + 1}\n")
 
+
 if __name__ == "__main__":
-    test_folds = True
+    test_folds = True # Set to False if submitting for grading
     dl = DataLoader()
 
     if test_folds:
@@ -100,19 +112,19 @@ if __name__ == "__main__":
         rmse_regression = np.zeros(num_folds)
         rmse_tree = np.zeros(num_folds)
         for fold in tqdm(range(num_folds)):
+            # Data loading and cleaning
             train_X, train_y, test_X, test_y = dl.get_fold_data(fold=fold+1)
             preprocessor = dl.make_preprocessor(train_X)
-            model_regression = make_pipeline(preprocessor, ElasticNet(alpha=0.001, l1_ratio=0.1, max_iter=10000))
-            #model_regression = make_pipeline(preprocessor, LinearRegression(n_jobs=4))
-            model_regression.fit(train_X, train_y)
-            pred_regression = model_regression.predict(test_X)
-            #model_tree = make_pipeline(processor, PutTreeMethodHere())
-            #model_tree.fit(train_X, train_y)
+
+            pred_regression = predict_regression(train_X, train_y, preprocessor)
+            pred_tree = predict_tree(train_X, train_y, preprocessor)
             rmse_regression[fold] = mean_squared_error(test_y,
                                                     pred_regression,
                                                     squared=False)
-            #rmse_tree[fold] = mean_squared_error(test_y,
-            #                                      model_tree.predict(test_X),
-            #                                      squared=False)
+            rmse_tree[fold] = mean_squared_error(test_y,
+                                                 pred_tree,
+                                                 squared=False)
         summarize_rmse(rmse_regression, "Regression")
-        #summarize_rmse(rmse_tree, "Tree")
+        summarize_rmse(rmse_tree, "Tree")
+    else:
+        train_X, train_y, test_X = dl.get_prediction_data()
