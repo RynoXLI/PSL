@@ -102,9 +102,19 @@ def summarize_rmse(rmse_array, desc):
               f" Mean: {np.mean(half):.4f}\n"
               f"Worst: Fold {np.argmax(half) + idx + 1}\n")
 
+def write_prediction(pred, test_X, filename="mysubmission1.txt"):
+        pred = np.round(np.exp(pred), 1)
+        df_out = pd.DataFrame({
+            "PID": test_X.index,
+            "Sale_Price": pred
+        })
+        csv_delimiter = ",  "
+        np.savetxt(filename, df_out, delimiter=csv_delimiter,
+                    header=csv_delimiter.join(df_out.columns.values),
+                    fmt=["%i", "%s"], comments='', encoding=None)
 
 if __name__ == "__main__":
-    test_folds = True # Set to False if submitting for grading
+    test_folds = False # Set to True to test. False if submitting for grading
     dl = DataLoader()
 
     if test_folds:
@@ -128,3 +138,8 @@ if __name__ == "__main__":
         summarize_rmse(rmse_tree, "Tree")
     else:
         train_X, train_y, test_X = dl.get_prediction_data()
+        preprocessor = dl.make_preprocessor(train_X)
+        pred_regression = predict_regression(train_X, train_y, preprocessor)
+        pred_tree = predict_tree(train_X, train_y, preprocessor)
+        write_prediction(pred_regression, test_X, "mysubmission1.txt")
+        write_prediction(pred_tree, test_X, "mysubmission2.txt")
