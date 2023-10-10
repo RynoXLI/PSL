@@ -3,4 +3,5 @@
 *.pdf
 *.pdf
 *.html
+*.txt
 !/reports/*.html
