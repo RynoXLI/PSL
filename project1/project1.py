@@ -2,13 +2,15 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from sklearn.compose import make_column_selector as selector
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import ElasticNet, LinearRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import mean_squared_error
+from lightgbm import LGBMRegressor
+from feature_engine.outliers import Winsorizer
 
 # Set random seed to the last four digits of our UINs
 np.random.seed(8818 + 1377 + 1)
@@ -20,9 +22,45 @@ class DataLoader:
         "Mo_Sold", "Year_Sold"
     ]
     DROP_COLS = [
-        "Street", "Utilities", "Condition_2", "Roof_Matl", "Heating", "Pool_QC",
-        "Misc_Feature", "Low_Qual_Fin_SF", "Pool_Area", "Latitude", "Longitude"
+    "Street", # high imbalance
+    "Utilities", # high imbalance
+    "Condition_2", # high imbalance
+    "Roof_Matl", # high imbalance
+    "Heating", # high imbalance
+    "Pool_QC", # high imbalance
+    "Misc_Feature", # Mostly missing
+    "Low_Qual_Fin_SF", # High amount of zeros
+    "Pool_Area", # high amount of zeros
+
+    "BsmtFin_SF_2", # high amount of zeros
+    "Three_season_porch", # high amount of zeros
+    "Screen_Porch", # high amount of zeros
+    "Misc_Val", # high amount of zeros
+    "Mas_Vnr_Type", # Mostly missing
+
+    # "Longitude",
+    # "Latitude"
     ]
+
+    # Provided by professor
+    WIN_COLS = [
+        "Lot_Frontage", 
+        "Lot_Area",
+        "Mas_Vnr_Area",
+        # "BsmtFin_SF_2", 
+        "Bsmt_Unf_SF", 
+        "Total_Bsmt_SF", 
+        "Second_Flr_SF", 
+        'First_Flr_SF', 
+        "Gr_Liv_Area", 
+        "Garage_Area", 
+        "Wood_Deck_SF", 
+        "Open_Porch_SF", 
+        "Enclosed_Porch", 
+        # "Three_season_porch", 
+        # "Screen_Porch", 
+        # "Misc_Val"
+        ]
 
     def __init__(self):
         # Some columns appear numeric, but are actually categorical.
@@ -76,7 +114,26 @@ class DataLoader:
         preprocessor = ColumnTransformer([
             ("one-hot-encoder", categorical_preprocessor, categorical_columns),
             ("standard_scaler", numerical_preprocessor, numerical_columns),
+            ('winsorizer', Winsorizer(), self.WIN_COLS)
         ])
+        return preprocessor
+    
+    def make_tree_preprocessor(self, train_X):
+        # Select columns by datatype
+        numerical_columns_selector = selector(dtype_exclude=object)
+        categorical_columns_selector = selector(dtype_include=object)
+        # Process column by datatype
+        categorical_preprocessor = OneHotEncoder(handle_unknown="ignore")
+        numerical_preprocessor = StandardScaler()
+        # Process predictors
+        categorical_columns = categorical_columns_selector(train_X)
+        numerical_columns = numerical_columns_selector(train_X)
+        # Use ColumnTransformer to split, process, and then concatenate columns
+        preprocessor = ColumnTransformer([
+            ("one-hot-encoder", categorical_preprocessor, categorical_columns),
+            # ("standard_scaler", numerical_preprocessor, numerical_columns),
+            # ('winsorizer', Winsorizer(), self.WIN_COLS)
+        ], remainder='passthrough')
         return preprocessor
     
 
@@ -86,7 +143,14 @@ def predict_regression(train_X, train_y, preprocessor):
     return model_regression.predict(test_X)
 
 def predict_tree(train_X, train_y, preprocessor):
-    model_tree = make_pipeline(preprocessor, LinearRegression(n_jobs=4)) # TODO: replace with actual tree
+    model_tree = make_pipeline(preprocessor, LGBMRegressor(n_estimators=20000, 
+                                                           learning_rate=0.01,
+                                                           max_depth=2, 
+                                                           subsample=0.8, 
+                                                           reg_alpha=0.01, 
+                                                           reg_lambda=0.01,
+                                                           verbose=-1)
+                                                           )
     model_tree.fit(train_X, train_y)
     return model_tree.predict(test_X)
 
@@ -118,6 +182,8 @@ if __name__ == "__main__":
     dl = DataLoader()
 
     if test_folds:
+        # library not available in test environment
+        from tqdm import tqdm
         num_folds = 10
         rmse_regression = np.zeros(num_folds)
         rmse_tree = np.zeros(num_folds)
@@ -125,9 +191,10 @@ if __name__ == "__main__":
             # Data loading and cleaning
             train_X, train_y, test_X, test_y = dl.get_fold_data(fold=fold+1)
             preprocessor = dl.make_preprocessor(train_X)
+            tree_preprocessor = dl.make_tree_preprocessor(train_X)
 
             pred_regression = predict_regression(train_X, train_y, preprocessor)
-            pred_tree = predict_tree(train_X, train_y, preprocessor)
+            pred_tree = predict_tree(train_X, train_y, tree_preprocessor)
             rmse_regression[fold] = mean_squared_error(test_y,
                                                     pred_regression,
                                                     squared=False)
@@ -139,7 +206,8 @@ if __name__ == "__main__":
     else:
         train_X, train_y, test_X = dl.get_prediction_data()
         preprocessor = dl.make_preprocessor(train_X)
+        tree_preprocessor = dl.make_tree_preprocessor(train_X)
         pred_regression = predict_regression(train_X, train_y, preprocessor)
-        pred_tree = predict_tree(train_X, train_y, preprocessor)
+        pred_tree = predict_tree(train_X, train_y, tree_preprocessor)
         write_prediction(pred_regression, test_X, "mysubmission1.txt")
         write_prediction(pred_tree, test_X, "mysubmission2.txt")
