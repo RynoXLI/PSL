@@ -16,7 +16,7 @@ UIUC Fall 2023
 
 ## Section 1: Technical Details
 
-In this project, we consider the Ames Housing dataset and seek to predict the log-scale housing price based on all available predictors. We use a regression model and a tree model to accomplish this task.
+In this project, we consider the Ames Housing dataset and seek to predict the log-scale housing price based on all available predictors. We use a linear regression model and a tree model to accomplish this task.
 
 Here we describe our data preprocessing steps and describe the models employed for prediction. Our implementation uses Python.
 
@@ -33,7 +33,7 @@ The entry point into the preprocessing pipeline is `Pandas.read_csv`, which pars
 After excluding variables and identifying the remaining categorical variables, the rest of the preprocessing is handled by the `sklearn.pipeline.make_pipeline` API, which allows provides convenient and clear preprocessing functions. First, we split the data into categorical and numerical partitions with `sklearn.compose.make_column_selector`. Then we encode categorical data and transform numerical date with `sklearn.compose.ColumnTransformer`. Finally, these columns are concatenated and output for model fitting.
 
 The preprocessing pipelines diverge at the numerical transformation step, depending on which model is being fit: 
-* For the regression model, the numerical variables are transformed.
+* For the linear regression model, the numerical variables are transformed.
 * For the tree model, we do no further transformation of numerical variables.
 
 
@@ -81,7 +81,7 @@ Winsorized predictors:
 
 ### Models
 
-#### Linear Model
+#### Linear Regression Model
 
 We used sci-kit learn's [ElasticNet](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html) to fit our linear-based method. 
 
@@ -109,7 +109,7 @@ The rest of the variables were kept default, please check the `LGBMRegressor` do
 ## Section 2: Performance Metrics
 
 In our testing our data meets the thresholds given in the report.
-### Results
+### Table of Results
 
 |   Fold |   Regression RMSE |   Tree RMSE |   Run Time |
 |-------:|------------------:|------------:|-----------:|
@@ -124,20 +124,20 @@ In our testing our data meets the thresholds given in the report.
 |      9 |          0.126624 |    0.13156  |    15.6905 |
 |     10 |          0.122893 |    0.124922 |    15.1485 |
 
-### Linear Model Summary
-#### First Half
+### Linear Regression Model Summary
+#### RMSE for Folds 1 through 5
 - **Range**: (0.1096, 0.1207)
 - **Mean**: 0.1140
-#### Second Half
+#### RMSE for Folds 6 through 10
 - **Range**: (0.1229, 0.1328)
 - **Mean**: 0.1282
 
 ### Tree Model Summary
 
-#### First Half
+#### RMSE for Folds 1 through 5
 - **Range**: (0.1144, 0.1212)
 - **Mean**: 0.1184
-#### Second Half
+#### RMSE for Folds 6 through 10
 - **Range**: (0.1249, 0.1326)
 - **Mean**: 0.1297
 
@@ -147,6 +147,6 @@ For the evaluation of this report, we used a Ryzen 5600X with 32GB of RAM for al
 
 ### Execution Time
 
-It took a total time of 2 minutes and 37 seconds to execute the code. An average of run time of 15 seconds per fold to preprocess and train the data. 
+It took a total time of 2 minutes and 37 seconds to execute the code. The average run time was 15 seconds per fold to preprocess the data, train both models and generate the predictions.
 
 <!-- Report the accuracy of your models on the test data (refer to the provided evaluation metric below), the execution time of your code, and details of the computer system you used (e.g., Macbook Pro, 2.53 GHz, 4GB memory or AWS t2.large) for all 10 training/test splits. -->
