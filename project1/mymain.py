@@ -25,9 +25,8 @@ import numpy as np
 import pandas as pd
 from sklearn.compose import make_column_selector as selector
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.decomposition import PCA
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import ElasticNet, LinearRegression
+from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import mean_squared_error
 from lightgbm import LGBMRegressor
@@ -63,9 +62,6 @@ class DataLoader:
     "Screen_Porch", # high amount of zeros
     "Misc_Val", # high amount of zeros
     "Mas_Vnr_Type", # Mostly missing
-
-    # "Longitude",
-    # "Latitude"
     ]
 
     # Provided by professor
@@ -73,7 +69,6 @@ class DataLoader:
         "Lot_Frontage", 
         "Lot_Area",
         "Mas_Vnr_Area",
-        # "BsmtFin_SF_2", 
         "Bsmt_Unf_SF", 
         "Total_Bsmt_SF", 
         "Second_Flr_SF", 
@@ -83,9 +78,6 @@ class DataLoader:
         "Wood_Deck_SF", 
         "Open_Porch_SF", 
         "Enclosed_Porch", 
-        # "Three_season_porch", 
-        # "Screen_Porch", 
-        # "Misc_Val"
         ]
 
     def __init__(self):
@@ -104,10 +96,6 @@ class DataLoader:
         train_y = np.log(df_train[self.RESPONSE_VAR])
         train_X = df_train.drop(columns=self.RESPONSE_VAR)
         train_X = train_X.drop(columns=self.DROP_COLS)
-
-        # TODO: Handle missing values in X
-        # TODO: Winsorize appropriate variables
-        # TODO: Remove imbalanced categorical vars
 
         test_X = pd.read_csv(path_test, index_col=0, dtype=self.dtype_dict)
         test_X = test_X.drop(columns=self.DROP_COLS)
@@ -146,25 +134,22 @@ class DataLoader:
     
     def make_tree_preprocessor(self, train_X):
         # Select columns by datatype
-        numerical_columns_selector = selector(dtype_exclude=object)
         categorical_columns_selector = selector(dtype_include=object)
         # Process column by datatype
         categorical_preprocessor = OneHotEncoder(handle_unknown="ignore")
-        numerical_preprocessor = StandardScaler()
         # Process predictors
         categorical_columns = categorical_columns_selector(train_X)
-        numerical_columns = numerical_columns_selector(train_X)
         # Use ColumnTransformer to split, process, and then concatenate columns
         preprocessor = ColumnTransformer([
             ("one-hot-encoder", categorical_preprocessor, categorical_columns),
-            # ("standard_scaler", numerical_preprocessor, numerical_columns),
-            # ('winsorizer', Winsorizer(), self.WIN_COLS)
         ], remainder='passthrough')
         return preprocessor
     
 
 def predict_regression(train_X, train_y, preprocessor):
-    model_regression = make_pipeline(preprocessor, ElasticNet(alpha=0.001, l1_ratio=0.1, max_iter=10000))
+    model_regression = make_pipeline(preprocessor, ElasticNet(alpha=0.001,
+                                                              l1_ratio=0.1,
+                                                              max_iter=10000))
     model_regression.fit(train_X, train_y)
     return model_regression.predict(test_X)
 
@@ -210,7 +195,7 @@ def write_prediction(pred, test_X, filename="mysubmission1.txt"):
 
 if __name__ == "__main__":
     start = datetime.now()
-    test_folds = True # Set to True to test. False if submitting for grading
+    test_folds = False # Set to True to test. False if submitting for grading
     dl = DataLoader()
 
     if test_folds: # Run in development environment
@@ -243,7 +228,10 @@ if __name__ == "__main__":
                                     rmse_tree.tolist(), 
                                     loop_time.tolist()]).T.tolist(), 
                           columns=['Fold', 'Regression RMSE', 'Tree RMSE', 'Run Time'])
-        df.to_markdown('dev-results.md', index=False)
+        try:
+            df.to_markdown('dev-results.md', index=False)
+        except ImportError:
+            print(df)
 
         summarize_rmse(rmse_regression, "Regression")
         summarize_rmse(rmse_tree, "Tree")
