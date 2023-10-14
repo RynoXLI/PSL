@@ -1,3 +1,24 @@
+"""
+# Project 1: Predict the Housing Prices in Ames
+
+CS 598 Practical Statistical Learning
+
+2023-10-16
+
+UIUC Fall 2023
+
+**Authors**
+* Ryan Fogle
+    - rsfogle2@illinois.edu
+    - UIN: 652628818
+* Sean Enright
+    - seanre2@illinois.edu
+    - UIN: 661791377
+"""
+
+#######################################################
+#### STEP 0: Load the necessary Python packages
+#######################################################
 from pathlib import Path
 
 import numpy as np
@@ -11,9 +32,14 @@ from sklearn.pipeline import make_pipeline
 from sklearn.metrics import mean_squared_error
 from lightgbm import LGBMRegressor
 from feature_engine.outliers import Winsorizer
+from datetime import datetime
 
 # Set random seed to the last four digits of our UINs
 np.random.seed(8818 + 1377 + 1)
+
+#######################################################
+#### STEP 0.5: Define functions & classes for project
+#######################################################
 
 class DataLoader:
     RESPONSE_VAR = "Sale_Price"
@@ -176,18 +202,26 @@ def write_prediction(pred, test_X, filename="mysubmission1.txt"):
         np.savetxt(filename, df_out, delimiter=csv_delimiter,
                     header=csv_delimiter.join(df_out.columns.values),
                     fmt=["%i", "%s"], comments='', encoding=None)
+        
+
+#######################################################
+#### STEP 0.75: Define main loop
+#######################################################
 
 if __name__ == "__main__":
-    test_folds = False # Set to True to test. False if submitting for grading
+    start = datetime.now()
+    test_folds = True # Set to True to test. False if submitting for grading
     dl = DataLoader()
 
-    if test_folds:
+    if test_folds: # Run in development environment
         # library not available in test environment
         from tqdm import tqdm
         num_folds = 10
         rmse_regression = np.zeros(num_folds)
         rmse_tree = np.zeros(num_folds)
+        loop_time = np.zeros(num_folds)
         for fold in tqdm(range(num_folds)):
+            loop_start = datetime.now()
             # Data loading and cleaning
             train_X, train_y, test_X, test_y = dl.get_fold_data(fold=fold+1)
             preprocessor = dl.make_preprocessor(train_X)
@@ -201,13 +235,34 @@ if __name__ == "__main__":
             rmse_tree[fold] = mean_squared_error(test_y,
                                                  pred_tree,
                                                  squared=False)
+            loop_time[fold] = (datetime.now() - loop_start).total_seconds()
+        
+        # Output Results, you'll need to install tabulate
+        df = pd.DataFrame(np.array([np.arange(1, 11).tolist(), 
+                                    rmse_regression.tolist(), 
+                                    rmse_tree.tolist(), 
+                                    loop_time.tolist()]).T.tolist(), 
+                          columns=['Fold', 'Regression RMSE', 'Tree RMSE', 'Run Time'])
+        df.to_markdown('dev-results.md', index=False)
+
         summarize_rmse(rmse_regression, "Regression")
         summarize_rmse(rmse_tree, "Tree")
-    else:
+
+        # Print total time taken
+        print('Total Time (s):', (datetime.now() - start).total_seconds())
+    else: # Run in testing environment
+
+        #######################################################
+        #### STEP 1: Preprocess the training data, then fit the two models
+        #######################################################
         train_X, train_y, test_X = dl.get_prediction_data()
         preprocessor = dl.make_preprocessor(train_X)
         tree_preprocessor = dl.make_tree_preprocessor(train_X)
         pred_regression = predict_regression(train_X, train_y, preprocessor)
         pred_tree = predict_tree(train_X, train_y, tree_preprocessor)
+
+        #######################################################
+        #### STEP 2: Preprocess the training data, then fit the two models
+        #######################################################
         write_prediction(pred_regression, test_X, "mysubmission1.txt")
         write_prediction(pred_tree, test_X, "mysubmission2.txt")
