@@ -1,24 +1,12 @@
 # Project 1: Predict the Housing Prices in Ames
 
-CS 598 Practical Statistical Learning
-
-2023-10-16
-
-UIUC Fall 2023
-
-**Authors**
-* Ryan Fogle
-    - rsfogle2@illinois.edu
-    - UIN: 652628818
-* Sean Enright
-    - seanre2@illinois.edu
-    - UIN: 661791377
+CS 598 Practical Statistical Learning, UIUC Fall 2023
+* Ryan Fogle (rsfogle2@, UIN: 652628818)
+* Sean Enright (seanre2@, UIN: 661791377)
 
 ## Section 1: Technical Details
 
-In this project, we consider the Ames Housing dataset and seek to predict the log-scale housing price based on all available predictors. We use a linear regression model and a tree model to accomplish this task.
-
-Here we describe our data preprocessing steps and describe the models employed for prediction. Our implementation uses Python.
+In this project, we consider the Ames Housing dataset and seek to predict the log-scale housing price based on all available predictors. We use a linear regression model and a tree model to accomplish this task. Here we describe our data preprocessing steps and describe the models employed for prediction. Our implementation uses Python.
 
 ### Data Preprocessing
 
@@ -28,7 +16,7 @@ The Ames Housing dataset consists of 82 variables. For our prediction task, `Sal
 
 An overview of the preprocessing pipeline is described here. Further details follow.
 
-The entry point into the preprocessing pipeline is `Pandas.read_csv`, which parses the training and test partition files. We allow automatic detection of datatypes, which identifies most of the categorical and numerical predictors properly, but some categorical variables are not identified and need to be manually specified. This is described in further detail below.
+The entry point into the preprocessing pipeline is `Pandas.read_csv`, which parses the training and test partition files. We allow automatic detection of datatypes, which identifies most of the categorical and numerical predictors properly, but some categorical variables are not identified and need to be manually specified.
 
 After excluding variables and identifying the remaining categorical variables, the rest of the preprocessing is handled by the `sklearn.pipeline.make_pipeline` API. First, we split the data into categorical and numerical partitions with `sklearn.compose.make_column_selector`. Then we encode categorical predictors and transform numerical predictors with `sklearn.compose.ColumnTransformer`. Finally, these columns are concatenated and output for model fitting.
 
@@ -36,22 +24,11 @@ The preprocessing pipelines diverge at the numerical transformation step, depend
 * For the linear regression model, the numerical variables are transformed.
 * For the tree model, we do no further transformation of numerical variables.
 
-
 #### Excluded Variables
 
 Our analysis of the dataset found that the many variables were either highly imbalanced, consisted of mainly zeros, or were predominantly missing values, and should be excluded in order to improve model performance. These variables were found by sifting through a pandas profiling report from the Python library: [ydata-profiling](https://docs.profiling.ydata.ai/4.6/)
 
-**Highly imbalanced predictors**
-
- `Street`,  `Utilities`, `Condition_2`, `Roof_Matl`, `Heating`, `Pool_QC`
-
-**Predictors with a high amount of zeros**
-
-`Low_Qual_Fin_SF`, `Pool_Area`, `BsmtFin_SF_2`, `Three_season_porch`, `Screen_Porch`, `Misc_Val`
-
-**Predictors with mostly missing values**
-
- `Misc_Feature`, `Mas_Vnr_Type`
+`Street`,  `Utilities`, `Condition_2`, `Roof_Matl`, `Heating`, `Pool_QC`, `Low_Qual_Fin_SF`, `Pool_Area`, `BsmtFin_SF_2`, `Three_season_porch`, `Screen_Porch`, `Misc_Val`, `Misc_Feature`, `Mas_Vnr_Type`
 
  After dropping these variables, 67 remaining predictors remain.
 
@@ -59,7 +36,7 @@ Our analysis of the dataset found that the many variables were either highly imb
 
 `Pandas.read_csv` identifies all columns with string-formatted data as the "Object" data type. We use `sklearn.compose.make_column_selector` to designate all "Object" columns as categorical variables.
 
-Before performing the conversion, though, we must manually correct the datatype of a handful of variables that are automatically identified as numerical, but are actually categorical. These variables are all time based, i.e., those that reference the year or month of an event. These are: `Year_Built`, `Year_Remod_Add`, `Garage_Yr_Blt`, `Mo_Sold`, and `Year_Sold`.
+Before performing the conversion, though, we must manually correct the datatype of a handful of variables that are automatically identified as numerical, but are actually categorical. These are: `Year_Built`, `Year_Remod_Add`, `Garage_Yr_Blt`, `Mo_Sold`, and `Year_Sold`.
 
 This gives us the full set of categorical variables: `MS_SubClass`, `MS_Zoning`, `Alley`, `Lot_Shape`, `Land_Contour`, `Lot_Config`, `Land_Slope`, `Neighborhood`, `Condition_1`, `Bldg_Type`, `House_Style`, `Overall_Qual`, `Overall_Cond`, `Year_Built`, `Year_Remod_Add`, `Roof_Style`, `Exterior_1st`, `Exterior`, `Foundation`, `Bsmt_Qual`, `Bsmt_Cond`, `Bsmt_Exposure`, `BsmtFin_Type_1`, `BsmtFin_Type_2`, `Heating_QC`, `Central_Air`, `Electrical`, `Kitchen_Qual`, `Functional`, `Fireplace_Qu`, `Garage_Type`, `Garage_Yr_Blt`, `Garage_Finish`, `Garage_Qual`, `Garage_Cond`, `Paved_Drive`, `Fence`, `Mo_Sold`, `Year_Sold`, `Sale_Type`, and `Sale_Condition`.
 
@@ -73,9 +50,7 @@ We scale all numerical variables with `sklearn.preprocessing.StandardScaler`, wh
 
 **Winsorized Variables**
 
-The following predictors are winsorized to reduce the effect of possible outliers. We use the `Winsorizer` class from the `feature_engine` library to accomplish this. We use the default configuration, so values are capped at +3 standard deviations above the mean.
-
-Winsorized predictors:
+The following predictors are winsorized to reduce the effect of possible outliers. We use the `Winsorizer` class from the `feature_engine` library with default configuration, so values are capped at +3 standard deviations above the mean.
 
 `Lot_Frontage`, `Lot_Area`, `Mas_Vnr_Area`, `Bsmt_Unf_SF`, `Total_Bsmt_SF`, `Second_Flr_SF`, `First_Flr_SF`, `Gr_Liv_Area`, `Garage_Area`, `Wood_Deck_SF`, `Open_Porch_SF`, `Enclosed_Porch`
 
@@ -83,28 +58,11 @@ Winsorized predictors:
 
 #### Linear Regression Model
 
-We used sci-kit learn's [ElasticNet](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html) to fit our linear-based method. 
-
-We explicitly define these parameters:
-- `alpha=0.01`
-- `l1_ratio=0.1`
-- `max_iter=10000`
-
-The rest of the variables were kept default, please check the `ElasticNet` documentation linked for the other parameters. 
+We used sci-kit learn's [ElasticNet](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html) to fit our linear-based method. We define these parameters: `alpha=0.01`, `l1_ratio=0.1`, `max_iter=10000`. The remaing variables were kept default.
 
 #### Tree Model
 
-For the tree-based model we used the python implementation of [LightGBM](https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.LGBMRegressor.html#lightgbm.LGBMRegressor).
-
-We explicitly define these parameters:
-- `n_estimators=1000`
-- `learning_rate=0.01`
-- `max_depth=2`
-- `subsample=0.8`
-- `reg_alpha=0.01`
-- `reg_lambda=0.01`
-
-The rest of the variables were kept default, please check the `LGBMRegressor` documentation linked for the other parameters. 
+For the tree-based model we used the python implementation of [LightGBM](https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.LGBMRegressor.html#lightgbm.LGBMRegressor). We define these parameters: `n_estimators=1000`,  `learning_rate=0.01`, `max_depth=2`, `subsample=0.8`, `reg_alpha=0.01`, `reg_lambda=0.01`. The rest of the variables were kept default.
 
 ## Section 2: Performance Metrics
 
@@ -123,23 +81,6 @@ In our testing our data meets the thresholds given in the report.
 |      8 |          0.126514 |    0.128918 |    16.533  |
 |      9 |          0.126624 |    0.13156  |    15.6905 |
 |     10 |          0.122893 |    0.124922 |    15.1485 |
-
-### Linear Regression Model Summary
-#### RMSE for Folds 1 through 5
-- **Range**: (0.1096, 0.1207)
-- **Mean**: 0.1140
-#### RMSE for Folds 6 through 10
-- **Range**: (0.1229, 0.1328)
-- **Mean**: 0.1282
-
-### Tree Model Summary
-
-#### RMSE for Folds 1 through 5
-- **Range**: (0.1144, 0.1212)
-- **Mean**: 0.1184
-#### RMSE for Folds 6 through 10
-- **Range**: (0.1249, 0.1326)
-- **Mean**: 0.1297
 
 ### Computer System
 
