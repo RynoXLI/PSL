@@ -28,9 +28,9 @@ The Ames Housing dataset consists of 82 variables. For our prediction task, `Sal
 
 An overview of the preprocessing pipeline is described here. Further details follow.
 
-The entry point into the preprocessing pipeline is `Pandas.read_csv`, which parses the training and test partition files. We allow automatic detection of datatypes, which identifies most of the categorical and numerical predictors properly, although some categorical variables are manually specified. This is described in further detail below.
+The entry point into the preprocessing pipeline is `Pandas.read_csv`, which parses the training and test partition files. We allow automatic detection of datatypes, which identifies most of the categorical and numerical predictors properly, but some categorical variables are not identified and need to be manually specified. This is described in further detail below.
 
-After excluding variables and identifying the remaining categorical variables, the rest of the preprocessing is handled by the `sklearn.pipeline.make_pipeline` API, which allows provides convenient and clear preprocessing functions. First, we split the data into categorical and numerical partitions with `sklearn.compose.make_column_selector`. Then we encode categorical data and transform numerical date with `sklearn.compose.ColumnTransformer`. Finally, these columns are concatenated and output for model fitting.
+After excluding variables and identifying the remaining categorical variables, the rest of the preprocessing is handled by the `sklearn.pipeline.make_pipeline` API. First, we split the data into categorical and numerical partitions with `sklearn.compose.make_column_selector`. Then we encode categorical predictors and transform numerical predictors with `sklearn.compose.ColumnTransformer`. Finally, these columns are concatenated and output for model fitting.
 
 The preprocessing pipelines diverge at the numerical transformation step, depending on which model is being fit: 
 * For the linear regression model, the numerical variables are transformed.
@@ -39,7 +39,7 @@ The preprocessing pipelines diverge at the numerical transformation step, depend
 
 #### Excluded Variables
 
-Our analysis of the dataset found that the many variables were either highly imbalanced, consisted of mainly zeros, or were predominantly missing values, and should be excluded in order to improve model performance. These variables were found by sifting through a pandas profiling report from the python library: [ydata-profiling](https://docs.profiling.ydata.ai/4.6/)
+Our analysis of the dataset found that the many variables were either highly imbalanced, consisted of mainly zeros, or were predominantly missing values, and should be excluded in order to improve model performance. These variables were found by sifting through a pandas profiling report from the Python library: [ydata-profiling](https://docs.profiling.ydata.ai/4.6/)
 
 **Highly imbalanced predictors**
 
@@ -59,17 +59,17 @@ Our analysis of the dataset found that the many variables were either highly imb
 
 `Pandas.read_csv` identifies all columns with string-formatted data as the "Object" data type. We use `sklearn.compose.make_column_selector` to designate all "Object" columns as categorical variables.
 
-Before performing the conversion, though, we must manually correct the datatype of a handful of variables that are automatically identified as numerical, but are actually categorical. These variables are all time based, i.e., those that reference the year or month of an event. These variables are: `Year_Built`, `Year_Remod_Add`, `Garage_Yr_Blt`, `Mo_Sold`, and `Year_Sold`.
+Before performing the conversion, though, we must manually correct the datatype of a handful of variables that are automatically identified as numerical, but are actually categorical. These variables are all time based, i.e., those that reference the year or month of an event. These are: `Year_Built`, `Year_Remod_Add`, `Garage_Yr_Blt`, `Mo_Sold`, and `Year_Sold`.
 
-This gives us the full set of categorical variables, which are: `MS_SubClass`, `MS_Zoning`, `Alley`, `Lot_Shape`, `Land_Contour`, `Lot_Config`, `Land_Slope`, `Neighborhood`, `Condition_1`, `Bldg_Type`, `House_Style`, `Overall_Qual`, `Overall_Cond`, `Year_Built`, `Year_Remod_Add`, `Roof_Style`, `Exterior_1st`, `Exterior`, `Foundation`, `Bsmt_Qual`, `Bsmt_Cond`, `Bsmt_Exposure`, `BsmtFin_Type_1`, `BsmtFin_Type_2`, `Heating_QC`, `Central_Air`, `Electrical`, `Kitchen_Qual`, `Functional`, `Fireplace_Qu`, `Garage_Type`, `Garage_Yr_Blt`, `Garage_Finish`, `Garage_Qual`, `Garage_Cond`, `Paved_Drive`, `Fence`, `Mo_Sold`, `Year_Sold`, `Sale_Type`, and `Sale_Condition`.
+This gives us the full set of categorical variables: `MS_SubClass`, `MS_Zoning`, `Alley`, `Lot_Shape`, `Land_Contour`, `Lot_Config`, `Land_Slope`, `Neighborhood`, `Condition_1`, `Bldg_Type`, `House_Style`, `Overall_Qual`, `Overall_Cond`, `Year_Built`, `Year_Remod_Add`, `Roof_Style`, `Exterior_1st`, `Exterior`, `Foundation`, `Bsmt_Qual`, `Bsmt_Cond`, `Bsmt_Exposure`, `BsmtFin_Type_1`, `BsmtFin_Type_2`, `Heating_QC`, `Central_Air`, `Electrical`, `Kitchen_Qual`, `Functional`, `Fireplace_Qu`, `Garage_Type`, `Garage_Yr_Blt`, `Garage_Finish`, `Garage_Qual`, `Garage_Cond`, `Paved_Drive`, `Fence`, `Mo_Sold`, `Year_Sold`, `Sale_Type`, and `Sale_Condition`.
 
-These variables are encoded with one-hot encoding via the `sklearn.preprocessing.OneHotEncoder` class, and any unseen levels encountered were set to be ignored.
+These variables are encoded with one-hot encoding via the `sklearn.preprocessing.OneHotEncoder` class, and any unseen levels encountered are set to be ignored.
 
 #### Transformations of Numerical Variables
 
 **Scaling of Variables**
 
-We scale all numerical variables with `sklearn.preprocessing.StandardScaler`, which centers each predictor, so that its mean is zero, and scales it so its standard deviation is one.
+We scale all numerical variables with `sklearn.preprocessing.StandardScaler`, which centers and scales each predictor, so that its mean is zero and its standard deviation is one.
 
 **Winsorized Variables**
 
