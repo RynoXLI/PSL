@@ -143,7 +143,7 @@ In our testing our data meets the thresholds given in the report.
 
 ### Computer System
 
-For the evaluation of this report, we used a Ryzen 5600X w/ 32GB of RAM and (insert here Sean's computer)
+For the evaluation of this report, we used a Ryzen 5600X with 32GB of RAM for all 10 training/test splits.
 
 ### Execution Time
 
