@@ -81,12 +81,34 @@ Winsorized predictors:
 
 ### Models
 
-#### Regression Model
+#### Linear Model
+
+We used sci-kit learn's [ElasticNet](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html) to fit our linear-based method. 
+
+We explicitly define these parameters:
+- `alpha=0.01`
+- `l1_ratio=0.1`
+- `max_iter=10000`
+
+The rest of the variables were kept default, please check the `ElasticNet` documentation linked for the other parameters. 
 
 #### Tree Model
 
+For the tree-based model we used the python implementation of [LightGBM](https://lightgbm.readthedocs.io/en/latest/pythonapi/lightgbm.LGBMRegressor.html#lightgbm.LGBMRegressor).
+
+We explicitly define these parameters:
+- `n_estimators=1000`
+- `learning_rate=0.01`
+- `max_depth=2`
+- `subsample=0.8`
+- `reg_alpha=0.01`
+- `reg_lambda=0.01`
+
+The rest of the variables were kept default, please check the `LGBMRegressor` documentation linked for the other parameters. 
+
 ## Section 2: Performance Metrics
 
+In our testing our data meets the thresholds given in the report.
 ### Results
 
 |   Fold |   Regression RMSE |   Tree RMSE |   Run Time |
@@ -102,7 +124,7 @@ Winsorized predictors:
 |      9 |          0.126624 |    0.13156  |    15.6905 |
 |     10 |          0.122893 |    0.124922 |    15.1485 |
 
-### Regression Summary
+### Linear Model Summary
 #### First Half
 - **Range**: (0.1096, 0.1207)
 - **Mean**: 0.1140
@@ -110,7 +132,7 @@ Winsorized predictors:
 - **Range**: (0.1229, 0.1328)
 - **Mean**: 0.1282
 
-### Tree Summary
+### Tree Model Summary
 
 #### First Half
 - **Range**: (0.1144, 0.1212)
