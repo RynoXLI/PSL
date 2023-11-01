@@ -4,4 +4,6 @@
 *.pdf
 *.html
 *.txt
+*.dat
+*.json
 !/reports/*.html
