@@ -4,4 +4,6 @@
 *.pdf
 *.html
 *.txt
+*.dat
 !/reports/*.html
+/quizzes/*
