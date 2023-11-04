@@ -91,6 +91,55 @@ def myBW(data: np.ndarray, mx: int, mz: int, w: np.ndarray,
         A, B = BW_onestep(data, mx, mz, w, A, B)
     return A, B
 
+def myViterbi(data: np.ndarray, mx: int, mz: int, w: np.ndarray,
+         A: np.ndarray, B: np.ndarray, itmax: int):
+    """Perform the Viterbi Algorithm to output the most likely latent sequence considering 
+        the data and the MLE of the parameters.
+
+    Args:
+        data (np.ndarray): Observations
+        mx (int): Count of distinct values X can take
+        mz (int): Count of distinct values Z can take
+        w (np.ndarray): An mz-by-1 probability vector representing the initial distribution for Z1.
+        A (np.ndarray): The mz-by-mz transition probability matrix that
+                        models the progression from Zt to Zt+1
+        B (np.ndarray): The mz-by-mx emission probability matrix,
+                        indicating how X is produced from Z
+        itmax (int): Maximum number of EM step iterations to perform
+    """
+
+    # Perform Baum-Welch to find estimates of A and B
+    A, B = myBW(data, mx, mz, w, A, B, itmax)
+
+    # put all valus on log-scale
+    w = np.log(w)
+    A = np.log(A)
+    B = np.log(B)
+
+    # initialize additional parameters
+    n = data.shape[0]
+    delta = np.zeros((mz, n))
+    Z = np.zeros(n, dtype=int)
+
+    # subtract 1 from data, python is indexed by 0 as the start.  
+    data = data - 1
+
+    # set initial gamma value
+    delta[:, 0] = w + B[:, data[0]]
+
+    # update for gamma
+    for idx in range(n - 1):
+        delta[:, idx + 1] = np.max(A + delta[:, idx].reshape(-1,1), axis=0) + B[:, data[idx + 1]]
+    # print(delta.T)
+    
+    # find optimal Z value. 
+    Z[n-1] = np.argmax(delta[:, n-1])
+    for idx in range(n-1, 0, -1):
+        Z[idx - 1] = np.argmax(delta[:, idx-1] + A[:, Z[idx]])
+
+    # add one at the end to match output
+    return Z + 1
+
 data = pd.read_csv('coding4_part2_data.txt', header=None).to_numpy().flatten()
 
 # Establish possible observations and number of latent states
@@ -104,6 +153,22 @@ B = np.row_stack([np.array([1, 3, 5]) / 9,
                   np.array([1, 2, 3]) / 6])
 
 # Perform Baum-Welch to find estimates of A and B
-A, B = myBW(data, mx, mz, w, A, B, 100)
-print(f"A: the {mz}-by-{mz} transition matrix\n\n{A}\n\n"
-      f"B: the {mz}-by-{mx} emission matrix\n\n{B}\n")
+A_new, B_new = myBW(data, mx, mz, w, A, B, 100)
+print(f"A: the {mz}-by-{mz} transition matrix\n\n{A_new}\n\n"
+      f"B: the {mz}-by-{mx} emission matrix\n\n{B_new}\n")
+
+w = np.array((0.5, 0.5))
+A = np.full((2, 2), 0.5)
+B = np.row_stack([np.array([1, 3, 5]) / 9,
+                  np.array([1, 2, 3]) / 6])
+
+Z_valid = []
+with open('Coding4_part2_Z.txt', 'r') as f:
+    Z_valid = np.array(f.read().strip().split(' ')).astype(int)
+Z = myViterbi(data, mx, mz, w, A, B, 100)
+
+print('Z Valid:')
+print(Z_valid)
+print('Z Calc:')
+print(Z)
+print('Z Valid == Z Calc:', np.array_equal(Z, Z_valid))
