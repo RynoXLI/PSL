@@ -5,5 +5,5 @@
 *.html
 *.txt
 *.dat
-!/reports/*.html
+!/reports/*/*.html
 /quizzes/*
