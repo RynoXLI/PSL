@@ -5,5 +5,5 @@
 *.html
 *.txt
 *.dat
-*.json
-!/reports/*.html
+!/reports/*/*.html
+/quizzes/*
