@@ -42,84 +42,101 @@ def myeval():
         # Compute the Weighted Absolute Error
         actuals = new_test['Weekly_Sales']
         preds = new_test['Weekly_Pred']
-        weights = new_test['IsHoliday_x'].apply(lambda x: 5 if x else 1)
+        try:
+            weights = new_test['IsHoliday_x'].apply(lambda x: 5 if x else 1)
+        except KeyError: 
+            weights = new_test['IsHoliday'].apply(lambda x: 5 if x else 1)
         wae.append(sum(weights * abs(actuals - preds)) / sum(weights))
 
     return wae
 
+def preprocess(data):
+    tmp = pd.to_datetime(data['Date'])
+    data['Wk'] = tmp.dt.isocalendar().week
+    data['Yr'] = tmp.dt.year
+    data['Wk'] = pd.Categorical(data['Wk'], categories=[i for i in range(1, 53)])  # 52 weeks 
+    #    data['IsHoliday'] = data['IsHoliday'].apply(int)
+    return data
+
+# Approach III (optimized)
 num_folds = 10
 
-# Approach I
-for i in range(1, num_folds + 1):
+for fold in range(1, num_folds + 1):
+    print(f"Starting fold {fold}")
     # Reading train data
-    file_path = f'Proj2_Data/fold_{i}/train.csv'
+    file_path = f'Proj2_Data/fold_{fold}/train.csv'
     train = pd.read_csv(file_path)
 
     # Reading test data
-    file_path = f'Proj2_Data/fold_{i}/test.csv'
+    file_path = f'Proj2_Data/fold_{fold}/test.csv'
     test = pd.read_csv(file_path)
 
-    most_recent_date = train['Date'].max()
+    # pre-allocate a pd to store the predictions
+    test_pred = pd.DataFrame()
 
-    # Filter and select necessary columns
-    tmp_train = train[train['Date'] == most_recent_date].copy()
-    tmp_train.rename(columns={'Weekly_Sales': 'Weekly_Pred'}, inplace=True)
-    tmp_train = tmp_train.drop(columns=['Date', 'IsHoliday'])
+    train_pairs = train[['Store', 'Dept']].drop_duplicates(ignore_index=True)
+    test_pairs = test[['Store', 'Dept']].drop_duplicates(ignore_index=True)
+    unique_pairs = pd.merge(train_pairs, test_pairs, how = 'inner', on =['Store', 'Dept'])
 
-    # Left join with the test data
-    test_pred = test.merge(tmp_train, on=['Dept', 'Store'], how='left')
+    train_split = unique_pairs.merge(train, on=['Store', 'Dept'], how='left')
+    train_split = preprocess(train_split)
+    y, X = patsy.dmatrices('Weekly_Sales ~ Weekly_Sales + Store + Dept + Yr  + Wk', 
+                        data = train_split, 
+                        return_type='dataframe')
+    train_split = dict(tuple(X.groupby(['Store', 'Dept'])))
 
-    # Fill NaN values with 0 for the Weekly_Pred column
+
+    test_split = unique_pairs.merge(test, on=['Store', 'Dept'], how='left')
+    test_split = preprocess(test_split)
+    y, X = patsy.dmatrices('Yr ~ Store + Dept + Yr  + Wk', 
+                        data = test_split, 
+                        return_type='dataframe')
+    X['Date'] = test_split['Date']
+    test_split = dict(tuple(X.groupby(['Store', 'Dept'])))
+
+    keys = list(train_split)
+
+    for key in keys:
+        X_train = train_split[key]
+        X_test = test_split[key]
+    
+        Y = X_train['Weekly_Sales']
+        X_train = X_train.drop(['Weekly_Sales','Store', 'Dept'], axis=1)
+        
+        cols_to_drop = X_train.columns[(X_train == 0).all()]
+        X_train = X_train.drop(columns=cols_to_drop)
+        X_test = X_test.drop(columns=cols_to_drop)
+    
+        cols_to_drop = []
+        for i in range(len(X_train.columns) - 1, 1, -1):  # Start from the last column and move backward
+            col_name = X_train.columns[i]
+            # Extract the current column and all previous columns
+            tmp_Y = X_train.iloc[:, i].values
+            tmp_X = X_train.iloc[:, :i].values
+
+            coefficients, residuals, rank, s = np.linalg.lstsq(tmp_X, tmp_Y, rcond=None)
+            if np.sum(residuals) < 1e-10:
+                    cols_to_drop.append(col_name)
+                
+        X_train = X_train.drop(columns=cols_to_drop)
+        X_test = X_test.drop(columns=cols_to_drop)
+
+        model = sm.OLS(Y, X_train).fit()
+        mycoef = model.params.fillna(0)
+        
+        tmp_pred = X_test[['Store', 'Dept', 'Date']]
+        X_test = X_test.drop(['Store', 'Dept', 'Date'], axis=1)
+        
+        tmp_pred['Weekly_Pred'] = np.dot(X_test, mycoef)
+        test_pred = pd.concat([test_pred, tmp_pred], ignore_index=True)
+        
     test_pred['Weekly_Pred'].fillna(0, inplace=True)
-
-    # Write the output to CSV
-    file_path = f'Proj2_Data/fold_{i}/mypred.csv'
-    test_pred.to_csv(file_path, index=False)
-
-print("Approach I")
-wae = myeval()
-for value in wae:
-    print(f"\t{value:.3f}")
-print(f"\tAverage {sum(wae) / len(wae):.3f}\n")
-
-# Approach II
-for i in range(1, num_folds + 1):
-    # Reading train data
-    file_path = f'Proj2_Data/fold_{i}/train.csv'
-    train = pd.read_csv(file_path)
-
-    # Reading test data
-    file_path = f'Proj2_Data/fold_{i}/test.csv'
-    test = pd.read_csv(file_path)
-
-    # Define start and end dates based on test data
-    start_last_year = pd.to_datetime(test['Date'].min()) - timedelta(days=375)
-    end_last_year = pd.to_datetime(test['Date'].max()) - timedelta(days=350)
-
-    # Filter train data based on the defined dates and compute 'Wk' column
-    tmp_train = train[(train['Date'] > str(start_last_year)) 
-                      & (train['Date'] < str(end_last_year))].copy()
-    tmp_train['Date'] = pd.to_datetime(tmp_train['Date'])  
-    tmp_train['Wk'] = tmp_train['Date'].dt.isocalendar().week
-    tmp_train.rename(columns={'Weekly_Sales': 'Weekly_Pred'}, inplace=True)
-    tmp_train.drop(columns=['Date', 'IsHoliday'], inplace=True)
-
-    # Compute 'Wk' column for test data
-    test['Date'] = pd.to_datetime(test['Date'])
-    test['Wk'] = test['Date'].dt.isocalendar().week
-
-    # Left join with the tmp_train data
-    test_pred = test.merge(tmp_train, on=['Dept', 'Store', 'Wk'], how='left').drop(columns=['Wk'])
-
-    # Fill NaN values with 0 for the Weekly_Pred column
-    test_pred['Weekly_Pred'].fillna(0, inplace=True)
-
+    
     # Save the output to CSV
-    file_path = f'Proj2_Data/fold_{i}/mypred.csv'
+    file_path = f'Proj2_Data/fold_{fold}/mypred.csv'
     test_pred.to_csv(file_path, index=False)
-
-print("Approach II")
+    
 wae = myeval()
 for value in wae:
     print(f"\t{value:.3f}")
-print(f"\tAverage {sum(wae) / len(wae):.3f}\n")
+print(f"{sum(wae) / len(wae):.3f}")
