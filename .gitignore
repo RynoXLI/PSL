@@ -7,3 +7,5 @@
 *.dat
 !/reports/*/*.html
 /quizzes/*
+.DS_Store
+*.zip
