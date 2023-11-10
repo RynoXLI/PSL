@@ -136,8 +136,8 @@ class DataLoader:
         dates = train_pivot['Date']
 
         X = train_pivot.drop(columns=['Date']).values
-        pca = PCA(n_components=min(X.shape[1], 8)).fit(X - X.mean(axis=0))
-        pca_pivot = pd.DataFrame(pca.inverse_transform(pca.transform(X)) + X.mean(axis=0), columns=train_pivot.columns[1:])
+        pca = PCA(n_components=min(X.shape[1], 8)).fit((X - X.mean(axis=0)))
+        pca_pivot = pd.DataFrame(pca.inverse_transform(pca.transform(X - X.mean(axis=0))) + X.mean(axis=0), columns=train_pivot.columns[1:])
         pca_pivot['Date'] = dates
         train_pca = pca_pivot.melt(id_vars='Date', var_name='Store', value_name='Weekly_Sales')
 
@@ -174,7 +174,7 @@ class DataLoader:
     
     def make_regression(self, train_X, train_y):
         """Make predictions using a linear regression model."""
-        model_regression = make_pipeline(self.make_preprocessor(train_X), SVR()
+        model_regression = make_pipeline(self.make_preprocessor(train_X), Ridge(alpha=0.25)
                                         )
         model_regression.fit(train_X, train_y)
         return model_regression
