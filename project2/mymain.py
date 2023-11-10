@@ -42,12 +42,12 @@ from sklearn.pipeline import make_pipeline
 from sklearn.metrics import mean_squared_error
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.svm import SVR
 
 class DataLoader:
     RESPONSE_VAR = "Weekly_Sales"
     DATE_COL = "Date"
     HOLIDAY_COL = "IsHoliday"
-    DROP_COLS = [DATE_COL]
 
     DTYPE = {
         "Store": "object",
@@ -59,47 +59,101 @@ class DataLoader:
 
     def __init__(self) -> None:
         pass
-
-    def get_prediction_data(self):
-        """Read and parse training and test data for evaluation."""
-        return self._clean_data(stem=Path.cwd())
-
-    def get_fold_data(self, fold=1):
-        """Read and parse test and training data for a single fold."""
-        # Parse three data files of a fold
-        stem = Path.cwd() / "project2" / "Proj2_Data" / f"fold_{fold}"
-        train_X, train_y, test_X = self._clean_data(stem=stem, train=True)
-
-        test_set = pd.read_csv(Path.cwd() / "project2" / "Proj2_Data" / "test_with_label.csv", dtype=self.DTYPE)
-        test_set['Week'] = test_set[self.DATE_COL].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[1]).astype('object')
-        test_set['Year'] = test_set[self.DATE_COL].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[0]).astype('float')
-
-        test_y = test_X.merge(test_set, on=['Dept', 'Store', 'Date'], how="left")[self.RESPONSE_VAR]
-        test_X = test_X.drop(columns=self.DROP_COLS)
-
-        return train_X, train_y, test_X, test_y
     
-    def _clean_data(self, stem, train=False):
-        """Parse the training and test data files, drop necessary columns, and
-        identify response column(s)."""
+    def load_data(self, stem):
+        train, test = self._load_data(stem)
+
+        test_X = test.drop(columns=['Weekly_Sales'])
+        test_y = test['Weekly_sales']
+
+        return train, test_X, test_y
+    
+    def _load_data(self, stem):
         path_train = stem / "train.csv"
         path_test = stem / "test.csv"
 
-        df_train = pd.read_csv(path_train, dtype=self.DTYPE)
-        df_train['Week'] = df_train[self.DATE_COL].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[1]).astype('object')
-        df_train['Year'] = df_train[self.DATE_COL].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[0]).astype('float')
-        # Separate predictors from response
-        train_y = df_train[self.RESPONSE_VAR]
+        train = pd.read_csv(path_train, dtype=self.DTYPE)
+        test = pd.read_csv(path_test, dtype=self.DTYPE)
+        return train, test
+    
+    def load_fold_data(self, fold=1):
+        stem = Path.cwd() / "project2" / "Proj2_Data" / f"fold_{fold}"
+        train, test = self._load_data(stem)
 
-        train_X = df_train.drop(columns=self.RESPONSE_VAR).drop(columns=self.DROP_COLS)
+        test_set = pd.read_csv(Path.cwd() / "project2" / "Proj2_Data" / "test_with_label.csv", dtype=self.DTYPE)
+        test_y = test.merge(test_set, on=['Dept', 'Store', 'Date'], how="left")[self.RESPONSE_VAR]
 
-        test_X = pd.read_csv(path_test, dtype=self.DTYPE)
-        test_X['Week'] = test_X[self.DATE_COL].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[1]).astype('object')
-        test_X['Year'] = test_X[self.DATE_COL].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[0]).astype('float')
+        return train, test, test_y
+    
+    def train_predict(self, train, test_X, test_y):
+        pred_y = np.zeros(test_y.shape[0])
+        for dept in dict(tuple(train.groupby('Dept'))):
+            # create masks
+            train_mask = (train['Dept'] == dept).values
+            test_mask = test_X['Dept'] == dept
+            
+            train_dept = train[train_mask].drop(columns=['Dept'])
+            # train_X_dept = train[train_mask].drop(columns=['Dept', 'Weekly_Sales'])
+            # train_y_dept = train[train_mask]['Weekly_Sales']
 
-        if not train:
-            test_X = test_X.drop(columns=self.DROP_COLS)
-        return train_X, train_y, test_X
+            test_X_dept = test_X[test_mask].drop(columns=['Dept'])
+
+            # Run PCA
+            train_X_dept, train_y_dept, test_X_dept = self._clean_data(train_dept, test_X_dept)
+
+            # Run per store
+            y_pred_store = np.zeros(test_X_dept.shape[0])
+            for store in dict(tuple(train_X_dept.groupby('Store'))):
+                train_mask_store = (train_X_dept['Store'] == store).values
+                test_mask_store = (test_X_dept['Store'] == store)
+
+                train_X_store = train_X_dept[train_mask_store].drop(columns=['Store'])
+                train_y_store = train_y_dept[train_mask_store]
+                test_X_store = test_X_dept[test_mask_store].drop(columns=['Store'])
+                
+                # Create Model
+                model = dl.make_regression(train_X_store, train_y_store)
+                
+                # Run Predictions
+                if test_X_store.shape[0] > 0:
+                    # print(y_pred_store.shape)
+                    # print(test_mask_store.shape)
+                    # print(y_pred_store[test_mask_store].shape)
+                    # print(test_X_store.shape)
+                    y_pred_store[test_mask_store] = model.predict(test_X_store)
+            
+            pred_y[test_mask] = y_pred_store
+        
+        weights = test_X['IsHoliday'].apply(lambda x: 5 if x else 1).values
+        return self.wmae(pred_y, test_y, weights)
+    
+    def _clean_data(self, train, test):
+        """Parse the training and test data files, drop necessary columns, and
+        identify response column(s)."""
+
+        # Run PCA to remove noise
+        train_pivot = train.pivot(index='Date', columns='Store', values='Weekly_Sales').reset_index().fillna(0)
+        dates = train_pivot['Date']
+
+        X = train_pivot.drop(columns=['Date']).values
+        pca = PCA(n_components=min(X.shape[1], 8)).fit(X - X.mean(axis=0))
+        pca_pivot = pd.DataFrame(pca.inverse_transform(pca.transform(X)) + X.mean(axis=0), columns=train_pivot.columns[1:])
+        pca_pivot['Date'] = dates
+        train_pca = pca_pivot.melt(id_vars='Date', var_name='Store', value_name='Weekly_Sales')
+
+        train_pca['Week'] = train_pca['Date'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[1]).astype('object')
+        train_pca['Year'] = train_pca['Date'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[0]).astype('float')
+        # train_pca['IsHoliday'] = train['IsHoliday'].astype('object').fillna(False)
+        train_pca = train_pca.drop(columns=['Date'])
+
+        test['Week'] = test['Date'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[1]).astype('object')
+        test['Year'] = test['Date'].apply(lambda x: datetime.strptime(x, '%Y-%m-%d').isocalendar()[0]).astype('float')
+        test = test.drop(columns=['Date'])
+
+        train_X = train_pca.drop(columns=['Weekly_Sales'])
+        train_Y = train_pca['Weekly_Sales']
+
+        return train_X, train_Y, test
     
     def make_preprocessor(self, train_X):
         """Create preprocessor for linear regression model pipeline."""
@@ -120,7 +174,7 @@ class DataLoader:
     
     def make_regression(self, train_X, train_y):
         """Make predictions using a linear regression model."""
-        model_regression = make_pipeline(self.make_preprocessor(train_X), Ridge(alpha=0.25)
+        model_regression = make_pipeline(self.make_preprocessor(train_X), SVR()
                                         )
         model_regression.fit(train_X, train_y)
         return model_regression
@@ -150,36 +204,14 @@ if __name__ == "__main__":
         for fold in tqdm(range(num_folds)):
             loop_start = datetime.now()
             # Data loading and cleaning
-            train_X, train_y, test_X, test_y = dl.get_fold_data(fold=fold+1)
-            pred_y = np.zeros(test_y.shape[0])
+
+            train, test_X, test_Y = dl.load_fold_data(fold+1)
+            wae = dl.train_predict(train, test_X, test_Y)
             
-            # group by department, store
-            for dept, store in dict(tuple(train_X.groupby(['Dept', 'Store']))):
-            # for dept in dict(tuple(train_X.groupby('Dept'))):
-                # create masks
-                train_mask = ((train_X['Dept'] == dept) & (train_X['Store'] == store)).values
-                test_mask = ((test_X['Dept'] == dept) & (test_X['Store'] == store))
-                # train_mask = (train_X['Dept'] == dept).values
-                # test_mask = test_X['Dept'] == dept
-
-                # train and test data
-                train_X_dept = train_X[train_mask].drop(columns=['Dept', 'Store'])
-                train_y_dept = train_y[train_mask]
-                test_X_dept = test_X[test_mask].drop(columns=['Dept', 'Store'])
-
-                # Train model
-                model = dl.make_regression(train_X_dept, train_y_dept)
-
-                # Run predictions
-                if test_X_dept.shape[0] > 0:
-                    pred_y[test_mask] = model.predict(test_X_dept)
-            
-            weights = test_X['IsHoliday'].apply(lambda x: 5 if x else 1).values
-            wmae[fold] = dl.wmae(pred_y, test_y, weights)
+            wmae[fold] = wae
             print(f'Fold {fold}')
             print(wmae[fold])
             loop_time[fold] = (datetime.now() - loop_start).total_seconds()
-            pd.DataFrame(np.array([pred_y.tolist(), test_y.tolist(), weights.tolist()]).T.tolist(), columns=['pred', 'test', 'weights']).to_csv(f'fold{fold}.csv')
 
         df = pd.DataFrame(np.array([np.arange(1, 11).tolist(),
                   wmae.tolist(),
