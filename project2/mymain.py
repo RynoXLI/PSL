@@ -59,7 +59,86 @@ def preprocess(data):
     return data
 
 # Approach III (optimized)
-num_folds = 10
+if False:
+    num_folds = 10
+
+    for fold in range(1, num_folds + 1):
+        print(f"Starting fold {fold}")
+        # Reading train data
+        file_path = f'Proj2_Data/fold_{fold}/train.csv'
+        train = pd.read_csv(file_path)
+
+        # Reading test data
+        file_path = f'Proj2_Data/fold_{fold}/test.csv'
+        test = pd.read_csv(file_path)
+
+        # pre-allocate a pd to store the predictions
+        test_pred = pd.DataFrame()
+
+        train_pairs = train[['Store', 'Dept']].drop_duplicates(ignore_index=True)
+        test_pairs = test[['Store', 'Dept']].drop_duplicates(ignore_index=True)
+        unique_pairs = pd.merge(train_pairs, test_pairs, how = 'inner', on =['Store', 'Dept'])
+
+        train_split = unique_pairs.merge(train, on=['Store', 'Dept'], how='left')
+        train_split = preprocess(train_split)
+        y, X = patsy.dmatrices('Weekly_Sales ~ Weekly_Sales + Store + Dept + Yr  + Wk', 
+                            data = train_split, 
+                            return_type='dataframe')
+        train_split = dict(tuple(X.groupby(['Store', 'Dept'])))
+
+
+        test_split = unique_pairs.merge(test, on=['Store', 'Dept'], how='left')
+        test_split = preprocess(test_split)
+        y, X = patsy.dmatrices('Yr ~ Store + Dept + Yr  + Wk', 
+                            data = test_split, 
+                            return_type='dataframe')
+        X['Date'] = test_split['Date']
+        test_split = dict(tuple(X.groupby(['Store', 'Dept'])))
+
+        keys = list(train_split)
+
+        for key in keys:
+            X_train = train_split[key]
+            X_test = test_split[key]
+        
+            Y = X_train['Weekly_Sales']
+            X_train = X_train.drop(['Weekly_Sales','Store', 'Dept'], axis=1)
+            
+            cols_to_drop = X_train.columns[(X_train == 0).all()]
+            X_train = X_train.drop(columns=cols_to_drop)
+            X_test = X_test.drop(columns=cols_to_drop)
+        
+            cols_to_drop = []
+            for i in range(len(X_train.columns) - 1, 1, -1):  # Start from the last column and move backward
+                col_name = X_train.columns[i]
+                # Extract the current column and all previous columns
+                tmp_Y = X_train.iloc[:, i].values
+                tmp_X = X_train.iloc[:, :i].values
+
+                coefficients, residuals, rank, s = np.linalg.lstsq(tmp_X, tmp_Y, rcond=None)
+                if np.sum(residuals) < 1e-10:
+                        cols_to_drop.append(col_name)
+                    
+            X_train = X_train.drop(columns=cols_to_drop)
+            X_test = X_test.drop(columns=cols_to_drop)
+
+            model = sm.OLS(Y, X_train).fit()
+            mycoef = model.params.fillna(0)
+            
+            tmp_pred = X_test[['Store', 'Dept', 'Date']]
+            X_test = X_test.drop(['Store', 'Dept', 'Date'], axis=1)
+            
+            tmp_pred['Weekly_Pred'] = np.dot(X_test, mycoef)
+            test_pred = pd.concat([test_pred, tmp_pred], ignore_index=True)
+            
+        test_pred['Weekly_Pred'].fillna(0, inplace=True)
+        
+        # Save the output to CSV
+        file_path = f'Proj2_Data/fold_{fold}/mypred.csv'
+        test_pred.to_csv(file_path, index=False)
+
+# Add SVD to Approach III
+num_folds = 1
 
 for fold in range(1, num_folds + 1):
     print(f"Starting fold {fold}")
@@ -74,18 +153,43 @@ for fold in range(1, num_folds + 1):
     # pre-allocate a pd to store the predictions
     test_pred = pd.DataFrame()
 
+    # Find all combinations of Store and Dept shared by both train and test sets
     train_pairs = train[['Store', 'Dept']].drop_duplicates(ignore_index=True)
     test_pairs = test[['Store', 'Dept']].drop_duplicates(ignore_index=True)
     unique_pairs = pd.merge(train_pairs, test_pairs, how = 'inner', on =['Store', 'Dept'])
+    
+    # start SVD
+    train_depts = train['Dept'].unique()
+    d = 8
+    #for dept in train_depts:
+    for dept in range(5):
+        filtered_train = train[train['Dept'] == dept]
+        # Select only the columns 'Store', 'Date', and 'Weekly_Sales'
+        selected_columns = filtered_train[['Store', 'Date', 'Weekly_Sales']]
 
+        # Pivot table to spread 'Store' values into columns, with 'Weekly_Sales' as values
+        train_dept_ts = selected_columns.pivot(index='Date', columns='Store',
+                                            values='Weekly_Sales').reset_index()
+        X = train_dept_ts.drop(columns=('Date')).to_numpy()
+        X[np.isnan(X)] = 0 # or set NaN to column/row mean?
+        store_means = X.mean(axis=1).reshape(-1, 1)
+        U, S, Vh = np.linalg.svd(X - store_means, full_matrices=False)
+        S[d:] = 0
+        X_tilde = np.dot(U * S, Vh) + store_means
+        #q = unique_pairs[unique_pairs['Dept'] == dept].merge(filtered_train, on=['Store', 'Dept'], how='left')
+        train.loc[train['Dept'] == dept, 'Weekly_Sales'] = X_tilde.ravel()
+        pass
+    # end SVD
+
+    # Merge in training set data for Store Dept combos and create design matrix for regression
     train_split = unique_pairs.merge(train, on=['Store', 'Dept'], how='left')
     train_split = preprocess(train_split)
-    y, X = patsy.dmatrices('Weekly_Sales ~ Weekly_Sales + Store + Dept + Yr  + Wk', 
-                        data = train_split, 
+    y, X = patsy.dmatrices('Weekly_Sales ~ Weekly_Sales + Store + Dept + Yr + Wk', 
+                           data = train_split, 
                         return_type='dataframe')
     train_split = dict(tuple(X.groupby(['Store', 'Dept'])))
 
-
+    # Merge in testing set data for Store Dept combos and create design matrix for regression
     test_split = unique_pairs.merge(test, on=['Store', 'Dept'], how='left')
     test_split = preprocess(test_split)
     y, X = patsy.dmatrices('Yr ~ Store + Dept + Yr  + Wk', 
@@ -94,8 +198,10 @@ for fold in range(1, num_folds + 1):
     X['Date'] = test_split['Date']
     test_split = dict(tuple(X.groupby(['Store', 'Dept'])))
 
+    # Iterate over every combination of Store and Dept and use linear regression to make prediction
+    # y: Weekly_Sales vector
+    # X: Design matrix of shape (# stores, intercept + # wk [categorical] + year) 
     keys = list(train_split)
-
     for key in keys:
         X_train = train_split[key]
         X_test = test_split[key]
@@ -103,12 +209,14 @@ for fold in range(1, num_folds + 1):
         Y = X_train['Weekly_Sales']
         X_train = X_train.drop(['Weekly_Sales','Store', 'Dept'], axis=1)
         
+        # Remove columns that are all zero, if any
         cols_to_drop = X_train.columns[(X_train == 0).all()]
         X_train = X_train.drop(columns=cols_to_drop)
         X_test = X_test.drop(columns=cols_to_drop)
     
+        # Remove columns that are not linearly independent
         cols_to_drop = []
-        for i in range(len(X_train.columns) - 1, 1, -1):  # Start from the last column and move backward
+        for i in range(len(X_train.columns) - 1, 1, -1):  # Iterate over columns backwards
             col_name = X_train.columns[i]
             # Extract the current column and all previous columns
             tmp_Y = X_train.iloc[:, i].values
@@ -135,7 +243,7 @@ for fold in range(1, num_folds + 1):
     # Save the output to CSV
     file_path = f'Proj2_Data/fold_{fold}/mypred.csv'
     test_pred.to_csv(file_path, index=False)
-    
+
 wae = myeval()
 for value in wae:
     print(f"\t{value:.3f}")
