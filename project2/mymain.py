@@ -27,22 +27,20 @@ prophet
 patsy (for model matrix), statsmodels
 xgboost
 warnings
-
 """
 
+from datetime import datetime
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
 from sklearn.compose import make_column_selector as selector
-from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import ElasticNet, LinearRegression, Ridge, SGDRegressor, Lasso
+from sklearn.decomposition import PCA
+from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
-from sklearn.metrics import mean_squared_error
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.decomposition import PCA, TruncatedSVD
-from sklearn.svm import SVR
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
 
 class DataLoader:
     RESPONSE_VAR = "Weekly_Sales"
@@ -60,32 +58,18 @@ class DataLoader:
     def __init__(self) -> None:
         pass
     
-    def load_data(self, stem):
-        train, test = self._load_data(stem)
-
-        test_X = test.drop(columns=['Weekly_Sales'])
-        test_y = test['Weekly_sales']
-
-        return train, test_X, test_y
-    
-    def _load_data(self, stem):
-        path_train = stem / "train.csv"
-        path_test = stem / "test.csv"
-
-        train = pd.read_csv(path_train, dtype=self.DTYPE)
-        test = pd.read_csv(path_test, dtype=self.DTYPE)
-        return train, test
-    
     def load_fold_data(self, fold=1):
-        stem = Path.cwd() / "project2" / "Proj2_Data" / f"fold_{fold}"
+        stem = Path.cwd() / "Proj2_Data" / f"fold_{fold}"
         train, test = self._load_data(stem)
 
-        test_set = pd.read_csv(Path.cwd() / "project2" / "Proj2_Data" / "test_with_label.csv", dtype=self.DTYPE)
-        test_y = test.merge(test_set, on=['Dept', 'Store', 'Date'], how="left")[self.RESPONSE_VAR]
+        test_set = pd.read_csv(Path.cwd() / "Proj2_Data" / "test_with_label.csv",
+                               dtype=self.DTYPE)
+        test_y = test.merge(test_set, on=['Dept', 'Store', 'Date'],
+                            how="left")[self.RESPONSE_VAR]
 
         return train, test, test_y
     
-    def train_predict(self, train, test_X, test_y):
+    def train_predict(self, train, test_X, test_y, fold):
         pred_y = np.zeros(test_y.shape[0])
         for dept in dict(tuple(train.groupby('Dept'))):
             # create masks
@@ -112,21 +96,34 @@ class DataLoader:
                 test_X_store = test_X_dept[test_mask_store].drop(columns=['Store'])
                 
                 # Create Model
-                model = dl.make_regression(train_X_store, train_y_store)
+                model = dl._make_regression(train_X_store, train_y_store)
                 
                 # Run Predictions
                 if test_X_store.shape[0] > 0:
-                    # print(y_pred_store.shape)
-                    # print(test_mask_store.shape)
-                    # print(y_pred_store[test_mask_store].shape)
-                    # print(test_X_store.shape)
                     y_pred_store[test_mask_store] = model.predict(test_X_store)
             
             pred_y[test_mask] = y_pred_store
         
-        weights = test_X['IsHoliday'].apply(lambda x: 5 if x else 1).values
-        return self.wmae(pred_y, test_y, weights)
+        # Create prediction file
+        test_X["Weekly_Pred"] = pred_y
+        test_X['Weekly_Pred'].fillna(0, inplace=True)
     
+        # Save the output to CSV
+        file_path = f'Proj2_Data/fold_{fold}/mypred.csv'
+        test_X.to_csv(file_path, index=False)
+        
+        # Evaluate WAE
+        weights = test_X['IsHoliday'].apply(lambda x: 5 if x else 1).values
+        return self._wmae(pred_y, test_y, weights)
+    
+    def _load_data(self, stem):
+        path_train = stem / "train.csv"
+        path_test = stem / "test.csv"
+
+        train = pd.read_csv(path_train, dtype=self.DTYPE)
+        test = pd.read_csv(path_test, dtype=self.DTYPE)
+        return train, test
+
     def _clean_data(self, train, test):
         """Parse the training and test data files, drop necessary columns, and
         identify response column(s)."""
@@ -155,7 +152,7 @@ class DataLoader:
 
         return train_X, train_Y, test
     
-    def make_preprocessor(self, train_X):
+    def _make_preprocessor(self, train_X):
         """Create preprocessor for linear regression model pipeline."""
 
         categorical_columns_selector = selector(dtype_include=object)
@@ -172,52 +169,66 @@ class DataLoader:
 
         return preprocessor
     
-    def make_regression(self, train_X, train_y):
+    def _make_regression(self, train_X, train_y):
         """Make predictions using a linear regression model."""
-        model_regression = make_pipeline(self.make_preprocessor(train_X), Ridge(alpha=0.25)
-                                        )
+        model_regression = make_pipeline(self._make_preprocessor(train_X),
+                                         Ridge(alpha=0.25))
         model_regression.fit(train_X, train_y)
         return model_regression
     
-    def wmae(self, y_pred, y_test, weights):
+    def _wmae(self, y_pred, y_test, weights):
         """Return the WMAE"""
         return np.sum(weights * np.abs(y_pred - y_test)) / np.sum(weights)
         # return sum(weights * abs(y_pred - y_test)) / sum(weights)
-    
+
+
+def myeval():
+    file_path = 'Proj2_Data/test_with_label.csv'
+    test_with_label = pd.read_csv(file_path)
+    num_folds = 10
+    wae = []
+
+    for i in range(num_folds):
+        file_path = f'Proj2_Data/fold_{i + 1}/test.csv'
+        test = pd.read_csv(file_path)
+        test = test.drop(columns=['IsHoliday']).merge(test_with_label, on=['Date', 'Store', 'Dept'])
+
+        file_path = f'Proj2_Data/fold_{i+1}/mypred.csv'
+        test_pred = pd.read_csv(file_path)
+
+        # Left join with the test data
+        new_test = test_pred.merge(test, on=['Date', 'Store', 'Dept'], how='left')
+
+        # Compute the Weighted Absolute Error
+        actuals = new_test['Weekly_Sales']
+        preds = new_test['Weekly_Pred']
+        weights = new_test['IsHoliday_x'].apply(lambda x: 5 if x else 1)
+        wae.append(sum(weights * abs(actuals - preds)) / sum(weights))
+    return wae
+
+def report_wae():
+    print("\nEvaluating prediction files\n")
+    wae = myeval()
+    for i in range(len(wae)):
+        print(f"Fold {i + 1:02}: {wae[i]:.3f}")
+    print(f"==================\nAverage: {sum(wae) / len(wae):.3f}")
 
 if __name__ == "__main__":
-    is_submission = False # True to submit for grading. False for testing.
     dl = DataLoader()
 
-    if is_submission: # Run in testing environment
-        train_X, train_y, test_X = dl.get_prediction_data()
-    else:
-        start = datetime.now()
+    start = datetime.now()
+    num_folds = 10
 
-        # import tqdm here because not available in submission environment
-        from tqdm import tqdm
+    for fold in range(1, num_folds + 1):
+        loop_start = datetime.now()
+        print(f"Fold {fold:02}...", end="")
+        
+        # Data loading and cleaning
+        train, test_X, test_Y = dl.load_fold_data(fold)
+        wae = dl.train_predict(train, test_X, test_Y, fold)
+        
+        print(f"{wae:.1f} ({(datetime.now() - loop_start).total_seconds():.1f} s)")
 
-        num_folds = 10
-        loop_time = np.zeros(num_folds)
-        wmae = np.zeros(num_folds)
-
-        for fold in tqdm(range(num_folds)):
-            loop_start = datetime.now()
-            # Data loading and cleaning
-
-            train, test_X, test_Y = dl.load_fold_data(fold+1)
-            wae = dl.train_predict(train, test_X, test_Y)
-            
-            wmae[fold] = wae
-            print(f'Fold {fold}')
-            print(wmae[fold])
-            loop_time[fold] = (datetime.now() - loop_start).total_seconds()
-
-        df = pd.DataFrame(np.array([np.arange(1, 11).tolist(),
-                  wmae.tolist(),
-                  loop_time.tolist()
-        ]).T.tolist(), columns=['Fold', 'WMAE', 'Loop Time'])
-        print(df.to_markdown(index=False))
-        print('Mean WAE: ', df['WMAE'].mean())
-        # Print total time taken
-        print('Total Time (s):', (datetime.now() - start).total_seconds())
+    # Print total time taken
+    print(f"\nTotal Time: {(datetime.now() - start).total_seconds() / 60:.1f} min\n")
+    report_wae()
