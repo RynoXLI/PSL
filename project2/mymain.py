@@ -24,7 +24,7 @@ import pandas as pd
 from sklearn.compose import make_column_selector as selector
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
-from sklearn.linear_model import Ridge, LinearRegression, ElasticNet
+from sklearn.linear_model import Ridge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
