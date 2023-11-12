@@ -24,7 +24,7 @@ import pandas as pd
 from sklearn.compose import make_column_selector as selector
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import Ridge, LinearRegression, ElasticNet
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -184,7 +184,7 @@ class DataLoader:
         ], remainder="passthrough")
 
         # Create pipeline with column transformations, followed by ridge regression
-        return make_pipeline(preprocessor, Ridge(alpha=0.25))
+        return make_pipeline(preprocessor, Ridge(alpha=0.15))
     
     @staticmethod
     def _apply_pca(train, d=8):
