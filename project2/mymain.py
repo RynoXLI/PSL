@@ -184,7 +184,7 @@ class DataLoader:
         ], remainder="passthrough")
 
         # Create pipeline with column transformations, followed by ridge regression
-        return make_pipeline(preprocessor, Ridge(alpha=0.25))
+        return make_pipeline(preprocessor, Ridge(alpha=0.15))
     
     @staticmethod
     def _apply_pca(train, d=8):
