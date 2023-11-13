@@ -1,4 +1,4 @@
-# Project 1: Predict the Housing Prices in Ames
+# Project 2: Walmart Store Sales Forcasting
 
 CS 598 Practical Statistical Learning, UIUC Fall 2023
 
@@ -42,11 +42,22 @@ $$
 WMAE = \frac{1}{\sum{w_i}} \sum^n_{i=1} {w_i | y_i - \hat{y}_i | }
 $$
 
-Where 
-- $n$ is the number of rows
-- $\hat{y}_i$ is the predicted sales
-- $y_i$ is the actual sales
-- $w_i$ are weights. $ w = 5$ if the week is a holiday week, $1$ otherwise. 
+Where $n$ is the number of rows, $\hat{y}_i$ is the predicted sales, $y_i$ is the actual sales, and $w_i$ are weights. $ w = 5$ if the week is a holiday week, $1$ otherwise. 
+
+### Results
+Our prediction gave a mean WAE of 1564.99. A table of result data is included in the appendix.
+
+### Computer System
+
+For the evaluation of this report, we used a Ryzen 5600X with 32GB of RAM for all 10 training/test splits.
+
+### Execution Time
+
+It took a total time of 3 minutes and 48 seconds to execute the code. The average run time was 23 seconds per fold to preprocess the data, train the model, and generate the predictions.
+
+<!-- Report the accuracy of your models on the test data (refer to the provided evaluation metric below), the execution time of your code, and details of the computer system you used (e.g., Macbook Pro, 2.53 GHz, 4GB memory or AWS t2.large) for all 10 training/test splits. -->
+
+## Appendix
 
 ### Table of Results
 
@@ -62,15 +73,3 @@ Where
 |    8 | 1375.47 |        24.3622 |
 |    9 | 1401.77 |        24.9397 |
 |   10 | 1399.33 |         25.344 |
-
-**Mean WAE: 1564.99**
-
-### Computer System
-
-For the evaluation of this report, we used a Ryzen 5600X with 32GB of RAM for all 10 training/test splits.
-
-### Execution Time
-
-It took a total time of 3 minutes and 48 seconds to execute the code. The average run time was 23 seconds per fold to preprocess the data, train the model, and generate the predictions.
-
-<!-- Report the accuracy of your models on the test data (refer to the provided evaluation metric below), the execution time of your code, and details of the computer system you used (e.g., Macbook Pro, 2.53 GHz, 4GB memory or AWS t2.large) for all 10 training/test splits. -->
