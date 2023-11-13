@@ -120,25 +120,24 @@ class DataLoader:
             y_pred_store = np.zeros(test_X_dept.shape[0])
             for store in dict(tuple(train_X_dept.groupby("Store"))):
                 # Create store masks
-                train_mask_store = (train_X_dept["Store"] == store).values
                 test_mask_store = (test_X_dept["Store"] == store)
+                # If store doesn't appear in test set, skip to next iteration
+                if not test_mask_store.any():
+                    continue
+                train_mask_store = (train_X_dept["Store"] == store).values
 
                 train_X_store = train_X_dept[train_mask_store].drop(columns=["Store"])
                 train_y_store = train_y_dept[train_mask_store]
                 test_X_store = test_X_dept[test_mask_store].drop(columns=["Store"])
-                
-                # Create Model
+
+                # Create model and generate predictions
                 model = self.pipeline.fit(train_X_store, train_y_store)
-                
-                # Make Predictions
-                if test_X_store.shape[0] > 0:
-                    y_pred_store[test_mask_store] = model.predict(test_X_store)
+                y_pred_store[test_mask_store] = model.predict(test_X_store)
             
             pred_y[test_mask] = y_pred_store
         
         # Create prediction file
         test_X["Weekly_Pred"] = pred_y
-        test_X["Weekly_Pred"].fillna(0, inplace=True)
         return test_X 
 
     def _clean_data(self, train, test):
@@ -210,7 +209,8 @@ class DataLoader:
         # Perform Principal Component Analysis (PCA) on X to remove noise
         pca = PCA(n_components=min(X.shape[1], d))
         pca.fit((X - X.mean(axis=0)))
-        X_tilde = pca.inverse_transform(pca.transform(X - X.mean(axis=0))) + X.mean(axis=0)
+        F_tilde = pca.transform(X - X.mean(axis=0))
+        X_tilde = pca.inverse_transform(F_tilde) + X.mean(axis=0)
         
         # Reconstruct training dataframe from PCA-processed data
         pca_pivot = pd.DataFrame(X_tilde, columns=train_pivot.columns[1:])
