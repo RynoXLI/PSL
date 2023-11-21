@@ -5,7 +5,9 @@
 *.html
 *.txt
 *.dat
+*.tsv
 !/reports/*/*.html
 /quizzes/*
 .DS_Store
 *.zip
+.RHistory
