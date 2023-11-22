@@ -15,18 +15,22 @@ UIUC Fall 2023
     - seanre2@illinois.edu
     - UIN: 661791377
 """
+import re
+import string
+import numpy as np
 import pandas as pd
 from pathlib import Path
+import nltk
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
-import re
-import string
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
-import nltk
+from sklearn.decomposition import PCA
+from sklearn.svm import SVC
 from scipy.stats import ttest_ind
+from sklearn.pipeline import Pipeline
 
 # download necessary packages for nltk
 nltk.download('stopwords')
@@ -43,61 +47,59 @@ class DataLoader:
         stem = Path.cwd() / "proj3_data" / f"split_{fold}"
 
         train = pd.read_csv(stem / 'train.tsv', sep='\t')
+        train['review'] = train['review'].str.replace('&lt;.*?&gt;', ' ', regex=True)
+
         test_X = pd.read_csv(stem / 'test.tsv', sep='\t')
         test_y = pd.read_csv(stem / 'test_y.tsv', sep='\t')['sentiment']
         train_y = train['sentiment']
         train_X = train.loc[:, train.columns != "sentiment"]
 
         return train_X, train_y, test_X, test_y
-
-    def preprocess_text(self, X: pd.DataFrame):
-        # Define regex pattern
-        p_ws = re.compile(r'\s+')
-        p_html = re.compile(r'<[^>]*>')
-        m_trans = str.maketrans("", "", string.punctuation) # https://stackoverflow.com/questions/265960/best-way-to-strip-punctuation-from-a-string
-        wnl = WordNetLemmatizer()
-
-        review_tokens = (X['review']
-         .apply(lambda x: p_html.sub(' ', x)) # remove html
-         .apply(lambda x: p_ws.sub(' ', x)) # Remove extra whitespace
-         .str.strip() # Remove starting and ending whitespace
-         .str.lower() # Lowercase text
-         .apply(lambda x: x.translate(m_trans)) # Remove punctuation
-         .apply(lambda x: [wnl.lemmatize(word) for word in word_tokenize(x) if word not in stop_words]) # Tokenize words, remove stop words, lemmatize
-         )
-
-        return review_tokens
     
     def fit(self, X, y):
-        print('Preprocessing Text...')
-        toks = self.preprocess_text(X)
-        print('Completed...Starting Count Vectorizor')
 
-        # self.pipe = Pipeline(steps=[
-        #     ('cv', CountVectorizer(preprocessor=lambda x: x, tokenizer=lambda x: x, ngram_range=(1, 4), max_features=999)),
-        #     ('tfidf', TfidfTransformer()),
-        #     ('svc', SVC(kernel='rbf'))
-        # ])
-        # self.pipe.fit(toks, y)
-
-        self.cv = CountVectorizer(preprocessor=lambda x: x, tokenizer=lambda x: x, ngram_range=(1, 4), max_df=0.5, min_df=0.01)
-
-        # what they did #2
-        X = self.cv.fit_transform(toks)
+        # Count Vectorizor, tokenization, preprocessing
+        print('Starting Count Vectorizor')
+        self.cv = CountVectorizer(preprocessor=lambda x: x.lower(), stop_words=list(stop_words), ngram_range=(1,4), min_df=0.001, max_df=0.5, token_pattern=r"\b[\w+\|']+\b")
+        X = self.cv.fit_transform(X['review'])
         print(f'CountVectorizer(), X-Shape:{X.shape}')
-        self.tfidf = TfidfTransformer()
-        X = self.tfidf.fit_transform(X)
+
+        # ## T-test strategy ... doesn't work
+        X = X.toarray()
+        pos_X = X[y.values == 1]
+        neg_X = X[y.values == 0]
+        print(pos_X.shape)
+        print(neg_X.shape)
+
+        tstat = (pos_X.mean(axis=0) - neg_X.mean(axis=0)) / np.sqrt(pos_X.var(axis=0) / pos_X.shape[1] + neg_X.var(axis=0) / neg_X.shape[1])
+        tstat_inds = tstat.argsort()
+        tstat.sort()
+        self.subset_inds = np.concatenate([tstat_inds[:750], tstat_inds[-750:]])
+
+        X = X[:, self.subset_inds]
+
+         # # first tfidf
+        tfidf_1 = TfidfTransformer()
+        X_1 = tfidf_1.fit_transform(X)
         print(f'TfidfTransform(), X-shape: {X.shape}')
-        # self.model = SVC(kernel='linear', probability=True)
-        # self.model = LogisticRegression(C=0.5, class_weight='balanced')
-        self.model = LogisticRegression(n_jobs=2)
-        self.model.fit(X, y)
-        print('Model Fitted')
+        lasso = LogisticRegression(n_jobs=2, C=1.0, solver='saga', penalty='l1')
+        lasso.fit(X_1, y)
+        print((lasso.coef_[0] != 0).sum())
+        self.inds = np.where(lasso.coef_[0] != 0)[0]
+        X = X[:, self.inds]
+
+        self.tfidf = TfidfTransformer()
+        X_2 = self.tfidf.fit_transform(X)
+        print(X_2.shape)
+        self.model = LogisticRegression(n_jobs=2, C=1.0, solver='saga', penalty='l2')
+        # self.model = SVC(kernel='linear', C= 1.0, probability=True)
+        self.model.fit(X_2, y)
+        print((self.model.coef_[0] != 0).sum())
     
     def predict(self, X):
-        toks = self.preprocess_text(X)
-        X = self.cv.transform(toks)
-        X = self.tfidf.transform(X)
+        X = self.cv.transform(X['review'])
+        X = self.tfidf.transform(X[:,  self.subset_inds][:, self.inds])
+        # X = self.tfidf.transform(X)
         return self.model.predict_proba(X)
         
 
