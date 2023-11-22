@@ -15,29 +15,15 @@ UIUC Fall 2023
     - seanre2@illinois.edu
     - UIN: 661791377
 """
-import re
-import string
 import numpy as np
 import pandas as pd
 from pathlib import Path
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer
-from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.metrics import roc_auc_score
-from sklearn.decomposition import PCA
-from sklearn.svm import SVC
-from scipy.stats import ttest_ind
-from sklearn.pipeline import Pipeline
 
-# download necessary packages for nltk
-nltk.download('stopwords')
-nltk.download('punkt')
-nltk.download('wordnet')
-
-stop_words = set(stopwords.words('english'))
+stop_words = ["i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", "their", "they", "his", "her", "she", "he", "a", 
+              "an", "and", "is", "was", "are", "were", "him", "himself", "has", "have", "it", "its", "the", "us"]
 
 class DataLoader:
     def __init__(self):
@@ -62,39 +48,38 @@ class DataLoader:
         print('Starting Count Vectorizor')
         self.cv = CountVectorizer(preprocessor=lambda x: x.lower(), stop_words=list(stop_words), ngram_range=(1,4), min_df=0.001, max_df=0.5, token_pattern=r"\b[\w+\|']+\b")
         X = self.cv.fit_transform(X['review'])
-        print(f'CountVectorizer(), X-Shape:{X.shape}')
+        print(f'CountVectorizer output X-Shape:{X.shape}')
 
-        # ## T-test strategy ... doesn't work
+        # ## T-test strategy
         X = X.toarray()
         pos_X = X[y.values == 1]
         neg_X = X[y.values == 0]
-        print(pos_X.shape)
-        print(neg_X.shape)
+        print("Postive Size", pos_X.shape)
+        print("Negative Size", neg_X.shape)
 
         tstat = (pos_X.mean(axis=0) - neg_X.mean(axis=0)) / np.sqrt(pos_X.var(axis=0) / pos_X.shape[1] + neg_X.var(axis=0) / neg_X.shape[1])
-        tstat_inds = tstat.argsort()
-        tstat.sort()
-        self.subset_inds = np.concatenate([tstat_inds[:750], tstat_inds[-750:]])
+        tstat_inds = np.abs(tstat).argsort()
+        self.subset_inds = tstat_inds[-2000:]
 
         X = X[:, self.subset_inds]
 
-         # # first tfidf
+         # first tfidf, use lasso to do dimension reduction
         tfidf_1 = TfidfTransformer()
         X_1 = tfidf_1.fit_transform(X)
-        print(f'TfidfTransform(), X-shape: {X.shape}')
-        lasso = LogisticRegression(n_jobs=2, C=1.0, solver='saga', penalty='l1')
+        print(f'TfidfTransform outpout X-shape: {X.shape}')
+        lasso = LogisticRegression(n_jobs=2, C=0.85, solver='saga', penalty='l1')
         lasso.fit(X_1, y)
-        print((lasso.coef_[0] != 0).sum())
+        print("Number of Features:", (lasso.coef_[0] != 0).sum())
         self.inds = np.where(lasso.coef_[0] != 0)[0]
         X = X[:, self.inds]
 
+        # Preform second transform, run ridge
         self.tfidf = TfidfTransformer()
         X_2 = self.tfidf.fit_transform(X)
-        print(X_2.shape)
-        self.model = LogisticRegression(n_jobs=2, C=1.0, solver='saga', penalty='l2')
+        self.model = LogisticRegressionCV(n_jobs=-1, Cs=np.arange(1.0, 25.0, step=0.5), solver='saga', penalty='l2', scoring='roc_auc')
         # self.model = SVC(kernel='linear', C= 1.0, probability=True)
         self.model.fit(X_2, y)
-        print((self.model.coef_[0] != 0).sum())
+        print("Best C:", self.model.C_)
     
     def predict(self, X):
         X = self.cv.transform(X['review'])
