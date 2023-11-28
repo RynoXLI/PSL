@@ -11,7 +11,9 @@ def predict(vocab, train_x, train_y, test_x):
     np.random.seed(0)
 
     vectorizer = CountVectorizer(
-        ngram_range=(1, 4))
+        ngram_range=(1, 4),
+        token_pattern=r"\b[\w+\|']+\b"
+    )
 
     tfidf_transformer = TfidfTransformer(use_idf=True)
 
