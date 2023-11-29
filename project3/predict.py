@@ -8,7 +8,6 @@ from sklearn.linear_model import LogisticRegressionCV
 from sklearn.metrics import roc_auc_score
 
 def predict(vocab, train_x, train_y, test_x):
-    np.random.seed(0)
 
     vectorizer = CountVectorizer(
         ngram_range=(1,4),
@@ -17,13 +16,15 @@ def predict(vocab, train_x, train_y, test_x):
     )
 
     tfidf_transformer = TfidfTransformer(use_idf=True)
-
+    
+    Cs = np.logspace(np.log10(4), np.log10(9.5), 20)
     model = LogisticRegressionCV(
         n_jobs=-1,
-        Cs=np.arange(1.0, 13.0, step=0.25),
+        Cs=Cs,
         solver="saga",
         penalty="l2",
         scoring="roc_auc",
+        random_state=0
     )
     
     # Use reduced vocabulary to build model
@@ -31,7 +32,6 @@ def predict(vocab, train_x, train_y, test_x):
     x = vectorizer.transform(train_x)
     x = tfidf_transformer.fit_transform(x)
     model.fit(x, train_y)
-    # print(len(model.coef_[0]))
     
     # Make predictions with test set
     x = vectorizer.transform(test_x)
