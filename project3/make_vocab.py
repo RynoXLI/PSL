@@ -1,5 +1,4 @@
 from pathlib import Path
-import time
 
 import numpy as np
 import pandas as pd
@@ -9,7 +8,6 @@ from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import roc_auc_score
 
-np.random.seed(0)
 
 def get_fold_data(fold):
     base_path = Path.cwd() / 'proj3_data' / f'split_{fold}' 
@@ -25,17 +23,19 @@ def get_fold_data(fold):
 
     test = pd.read_csv(path_test, sep='\t', header=0, dtype=dtypes_dict)
     test_x = test['review'].str.replace('&lt;.*?&gt;', ' ', regex=True)
-    test_y = pd.read_csv(path_test_y, sep='\t', header=0, dtype=dtypes_dict)['sentiment']
+    test_y = pd.read_csv(path_test_y, sep='\t', header=0,
+                         dtype=dtypes_dict)['sentiment']
     return train_x, train_y, test_x, test_y
 
 stop_words = [
-    'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'their',
-    'they', 'his', 'her', 'she', 'he', 'a', 'an', 'and', 'is', 'was', 'are', 'were', 'him',
-    'himself', 'has', 'have', 'it', 'its', 'the', 'us', 'br'
+    'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your',
+    'yours', 'their', 'they', 'his', 'her', 'she', 'he', 'a', 'an', 'and', 'is',
+    'was', 'are', 'were', 'him', 'himself', 'has', 'have', 'it', 'its', 'the',
+    'us', 'br'
 ]
 
 # Data
-fold = 1
+fold = 2
 train_x, train_y, test_x, test_y = get_fold_data(1)
 full_x = pd.concat((train_x, test_x), axis=0)
 full_y = pd.concat((train_y, test_y), axis=0)
@@ -79,23 +79,58 @@ class T_TestTransformer(BaseEstimator, TransformerMixin):
         # Select columns corresponing to n-grams likely to be relevant
         return x[:, self.subset_inds]
 
-logistic_regression = LogisticRegression(n_jobs=-1, C=0.85, solver="saga", penalty="l1")
+# C=0.85
+Cs = np.logspace(-2, -0.4, 20)
+logistic_regression = LogisticRegressionCV(
+    n_jobs=-1,
+    Cs=Cs,
+    solver="saga",
+    penalty="l1",
+    scoring="roc_auc",
+    max_iter=1000,
+    random_state=0
+)
     
 pipeline_vocab = Pipeline([
-    ('vect', vectorizer),
+    ('vectorizer', vectorizer),
     ('t-score', T_TestTransformer()),
     ('tfidf', tfidf_transformer),
     ('logreg', logistic_regression),
 ])
 
-# Spare matrix of shape (# train rows, vectorizer embedding size)
-start_time = time.time()
+# Fit with LogisticRegressionCV to find optimal regularization parameter
+# that reduces vocab below 1000
 pipeline_vocab.fit(full_x, full_y)
-print(f"Vocab pipeline fitting: {(time.time() - start_time):.1f} s")
 
-# Vocab selection
-vocab_t = pipeline_vocab['vect'].get_feature_names_out()[pipeline_vocab['t-score'].subset_inds]
-vocab = vocab_t[(pipeline_vocab['logreg'].coef_ != 0).reshape(-1)]
+# Evaluate regularization parameter values and select the optimal one
+max_vocab = 950
+vocab_size = np.empty(Cs.shape)
+scores = pipeline_vocab['logreg'].scores_[1].mean(axis=0)
+for i in range(len(Cs)):
+    vocab_size[i] = (pipeline_vocab['logreg'].coefs_paths_[1]
+                     .mean(axis=0)[i, :] != 0).sum() - 1
+mask = vocab_size < max_vocab
+best_c = Cs[mask][np.argmax(scores[mask])]
+print((f"Best C value: {best_c},"
+       f"\nVocab size: {vocab_size[mask][np.argmax(scores[mask])]},"
+       f"\nAUROC: {scores[mask].max():.4f}"))
+
+# Refit data with regularization parameter value found above
+pipeline_vocab.steps.pop(3)
+pipeline_vocab.steps.append(
+    ['logreg', LogisticRegression(n_jobs=-1,
+                                  C=best_c,
+                                  solver="saga",
+                                  penalty="l1",
+                                  max_iter=1000)])
+
+pipeline_vocab.fit(full_x, full_y)
+
+# Select vocabulary
+t_score_inds = pipeline_vocab['t-score'].subset_inds
+vocab_t = pipeline_vocab['vectorizer'].get_feature_names_out()[t_score_inds]
+lasso_inds = (pipeline_vocab['logreg'].coef_ != 0).reshape(-1)
+vocab = vocab_t[lasso_inds]
 print(f"\nVocab size  (t-test selection): {len(vocab_t)}")
 print(f"  Vocab size (logistic w/ lasso): {len(vocab)} words\n")
 
