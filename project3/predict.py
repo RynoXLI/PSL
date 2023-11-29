@@ -11,8 +11,9 @@ def predict(vocab, train_x, train_y, test_x):
     np.random.seed(0)
 
     vectorizer = CountVectorizer(
-        ngram_range=(1, 4),
-        token_pattern=r"\b[\w+\|']+\b"
+        ngram_range=(1,4),
+        token_pattern=r"\b[\w+\|']+\b",
+        vocabulary=vocab
     )
 
     tfidf_transformer = TfidfTransformer(use_idf=True)
@@ -26,10 +27,11 @@ def predict(vocab, train_x, train_y, test_x):
     )
     
     # Use reduced vocabulary to build model
-    vectorizer.fit(vocab)
+    # vectorizer.fit(vocab)
     x = vectorizer.transform(train_x)
     x = tfidf_transformer.fit_transform(x)
     model.fit(x, train_y)
+    # print(len(model.coef_[0]))
     
     # Make predictions with test set
     x = vectorizer.transform(test_x)
