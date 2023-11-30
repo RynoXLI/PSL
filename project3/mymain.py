@@ -1,3 +1,21 @@
+"""
+# Project 3: Movie Review Sentiment Analysis
+
+CS 598 Practical Statistical Learning
+
+2023-12-04
+
+UIUC Fall 2023
+
+**Authors**
+* Ryan Fogle
+    - rsfogle2@illinois.edu
+    - UIN: 652628818
+* Sean Enright
+    - seanre2@illinois.edu
+    - UIN: 661791377
+"""
+
 from pathlib import Path
 import time
 
@@ -8,7 +26,7 @@ from sklearn.linear_model import LogisticRegressionCV
 from sklearn.metrics import roc_auc_score
 
 dtypes_dict = {"review": "string",
-                "sentiment": "Int32"}
+               "sentiment": "Int32"}
 
 def predict(vocab, train_x, train_y, test_x):
 
@@ -70,14 +88,16 @@ def read_vocab(vocab_file="myvocab.txt"):
 
 
 if __name__ == "__main__":
-    is_submission = False  # True to submit for grading. False for testing.
+    is_submission = True  # True to submit for grading. False for testing.
     vocab = read_vocab()
-    print(f"Vocab size: {len(vocab)}")
+    #print(f"Vocab size: {len(vocab)}")
     
     # Submit for grading and run in test environment
     if is_submission:
+        # Read data and make predictions
         train_x, train_y, test_x = get_data()
         preds = predict(vocab, train_x, train_y, test_x)
+        # Write predictions to file
         test_x = test_x.to_frame()
         test_x["prob"] = preds[:, 1]
         test_x.to_csv("mysubmission.csv", sep=",", header=True, columns=["prob"])
