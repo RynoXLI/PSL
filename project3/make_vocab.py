@@ -8,10 +8,20 @@ from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import roc_auc_score
 
+## Data Retrieval
 dtypes_dict = {"review": "string",
                "sentiment": "Int32"}
 
 def get_data(base_path=Path.cwd()):
+    """Retrieve the training and test data, formatted as DataFrames
+
+    Args:
+        base_path (optional): Path of folder with training and test data.
+                              Defaults to Path.cwd().
+
+    Returns:
+        (train_x, train_y, test_x): Training and test dataframes
+    """
     path_train  = base_path / "train.tsv"
     path_test   = base_path / "test.tsv"
     
@@ -25,6 +35,14 @@ def get_data(base_path=Path.cwd()):
     return train_x, train_y, test_x
 
 def get_fold_data(fold):
+    """Retrieve the training and test data for a given fold
+
+    Args:
+        fold (int): Fold number for training andtest data
+
+    Returns:
+        (train_x, train_y, test_x, test_y): Training and test dataframes
+    """
     fold_path = Path.cwd() / "proj3_data" / f"split_{fold}"
     train_x, train_y, test_x = get_data(base_path=fold_path)
     path_test_y = fold_path / "test_y.tsv"
@@ -32,18 +50,18 @@ def get_fold_data(fold):
     test_y = pd.read_csv(path_test_y, sep="\t", header=0, dtype=dtypes_dict)["sentiment"]
     return train_x, train_y, test_x, test_y
 
+fold = 2
+train_x, train_y, test_x, test_y = get_fold_data(fold)
+full_x = pd.concat((train_x, test_x), axis=0)
+full_y = pd.concat((train_y, test_y), axis=0)
+
+### Tokenization
 stop_words = [
     "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your",
     "yours", "their", "they", "his", "her", "she", "he", "a", "an", "and", "is",
     "was", "are", "were", "him", "himself", "has", "have", "it", "its", "the",
     "us", "br"
 ]
-
-# Data
-fold = 2
-train_x, train_y, test_x, test_y = get_fold_data(fold)
-full_x = pd.concat((train_x, test_x), axis=0)
-full_y = pd.concat((train_y, test_y), axis=0)
 
 vectorizer = CountVectorizer(
     preprocessor=lambda x: x.lower(), # Convert to lowercase
@@ -54,9 +72,10 @@ vectorizer = CountVectorizer(
     token_pattern=r"\b[\w+\|']+\b"    # Use word tokenizer
 )
 
+### TF-IDF Conversion
 tfidf_transformer = TfidfTransformer(use_idf=True)
 
-# Select n-grams by T-test strategy
+### T-test Subset Selection
 class T_TestTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, vocab_size=2000):
         self.vocab_size = vocab_size
@@ -84,6 +103,7 @@ class T_TestTransformer(BaseEstimator, TransformerMixin):
         # Select columns corresponing to n-grams likely to be relevant
         return x[:, self.subset_inds]
 
+### Logistic Regression with Lasso Regularization
 Cs = np.logspace(-2, -0.4, 20)
 logistic_regression = LogisticRegressionCV(
     n_jobs=-1,
@@ -94,7 +114,8 @@ logistic_regression = LogisticRegressionCV(
     max_iter=1000,
     random_state=0
 )
-    
+
+### Pipeline Execution
 pipeline_vocab = Pipeline([
     ("vectorizer", vectorizer),
     ("t-score", T_TestTransformer()),
@@ -102,10 +123,9 @@ pipeline_vocab = Pipeline([
     ("logreg", logistic_regression),
 ])
 
-# Fit with LogisticRegressionCV to find optimal regularization parameter
-# that reduces vocab below 1000
 pipeline_vocab.fit(full_x, full_y)
 
+### Selecting the Lasso Regularization Parameter
 # Evaluate regularization parameter values and select the optimal one
 max_vocab = 950
 vocab_size = np.empty(Cs.shape)
@@ -130,6 +150,7 @@ pipeline_vocab.steps.append(
 
 pipeline_vocab.fit(full_x, full_y)
 
+## Final Vocabulary Selection
 # Select vocabulary
 t_score_inds = pipeline_vocab["t-score"].subset_inds
 vocab_t = pipeline_vocab["vectorizer"].get_feature_names_out()[t_score_inds]
