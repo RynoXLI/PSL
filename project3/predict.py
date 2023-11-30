@@ -7,6 +7,9 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.metrics import roc_auc_score
 
+dtypes_dict = {"review": "string",
+                "sentiment": "Int32"}
+
 def predict(vocab, train_x, train_y, test_x):
 
     vectorizer = CountVectorizer(
@@ -28,7 +31,6 @@ def predict(vocab, train_x, train_y, test_x):
     )
     
     # Use reduced vocabulary to build model
-    # vectorizer.fit(vocab)
     x = vectorizer.transform(train_x)
     x = tfidf_transformer.fit_transform(x)
     model.fit(x, train_y)
@@ -39,20 +41,24 @@ def predict(vocab, train_x, train_y, test_x):
     preds =  model.predict_proba(x)
     return preds
 
-def get_fold_data(fold):
-    base_path = Path.cwd() / "proj3_data" / f"split_{fold}" 
+def get_data(base_path=Path.cwd()):
     path_train  = base_path / "train.tsv"
     path_test   = base_path / "test.tsv"
-    path_test_y = base_path / "test_y.tsv"
-
-    dtypes_dict = {"review": "string",
-                   "sentiment": "Int32"}
+    
     train = pd.read_csv(path_train, sep="\t", header=0, dtype=dtypes_dict)
     train_x = train["review"].str.replace("&lt;.*?&gt;", " ", regex=True)
     train_y = train["sentiment"]
 
-    test = pd.read_csv(path_test, sep="\t", header=0, dtype=dtypes_dict)
+    test = pd.read_csv(path_test, sep="\t", header=0,
+                       dtype=dtypes_dict, index_col="id")
     test_x = test["review"].str.replace("&lt;.*?&gt;", " ", regex=True)
+    return train_x, train_y, test_x
+
+def get_fold_data(fold):
+    fold_path = Path.cwd() / "proj3_data" / f"split_{fold}"
+    train_x, train_y, test_x = get_data(base_path=fold_path)
+    path_test_y = fold_path / "test_y.tsv"
+    
     test_y = pd.read_csv(path_test_y, sep="\t", header=0, dtype=dtypes_dict)["sentiment"]
     return train_x, train_y, test_x, test_y
 
@@ -70,7 +76,11 @@ if __name__ == "__main__":
     
     # Submit for grading and run in test environment
     if is_submission:
-        pass
+        train_x, train_y, test_x = get_data()
+        preds = predict(vocab, train_x, train_y, test_x)
+        test_x = test_x.to_frame()
+        test_x["prob"] = preds[:, 1]
+        test_x.to_csv("mysubmission.csv", sep=",", header=True, columns=["prob"])
 
     # Internal testing before submission
     else:
