@@ -8,23 +8,28 @@ from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import roc_auc_score
 
+dtypes_dict = {"review": "string",
+                "sentiment": "Int32"}
+
+def get_data(base_path=Path.cwd()):
+    path_train  = base_path / "train.tsv"
+    path_test   = base_path / "test.tsv"
+    
+    train = pd.read_csv(path_train, sep="\t", header=0, dtype=dtypes_dict)
+    train_x = train["review"].str.replace("&lt;.*?&gt;", " ", regex=True)
+    train_y = train["sentiment"]
+
+    test = pd.read_csv(path_test, sep="\t", header=0,
+                       dtype=dtypes_dict, index_col="id")
+    test_x = test["review"].str.replace("&lt;.*?&gt;", " ", regex=True)
+    return train_x, train_y, test_x
 
 def get_fold_data(fold):
-    base_path = Path.cwd() / 'proj3_data' / f'split_{fold}' 
-    path_train  = base_path / 'train.tsv'
-    path_test   = base_path / 'test.tsv'
-    path_test_y = base_path / 'test_y.tsv'
-
-    dtypes_dict = {'review': 'string',
-                'sentiment': 'Int32'}
-    train = pd.read_csv(path_train, sep='\t', header=0, dtype=dtypes_dict)
-    train_x = train['review'].str.replace('&lt;.*?&gt;', ' ', regex=True)
-    train_y = train['sentiment']
-
-    test = pd.read_csv(path_test, sep='\t', header=0, dtype=dtypes_dict)
-    test_x = test['review'].str.replace('&lt;.*?&gt;', ' ', regex=True)
-    test_y = pd.read_csv(path_test_y, sep='\t', header=0,
-                         dtype=dtypes_dict)['sentiment']
+    fold_path = Path.cwd() / "proj3_data" / f"split_{fold}"
+    train_x, train_y, test_x = get_data(base_path=fold_path)
+    path_test_y = fold_path / "test_y.tsv"
+    
+    test_y = pd.read_csv(path_test_y, sep="\t", header=0, dtype=dtypes_dict)["sentiment"]
     return train_x, train_y, test_x, test_y
 
 stop_words = [
@@ -36,7 +41,7 @@ stop_words = [
 
 # Data
 fold = 2
-train_x, train_y, test_x, test_y = get_fold_data(1)
+train_x, train_y, test_x, test_y = get_fold_data(fold)
 full_x = pd.concat((train_x, test_x), axis=0)
 full_y = pd.concat((train_y, test_y), axis=0)
 
