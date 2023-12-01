@@ -7,6 +7,9 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import roc_auc_score
+from datetime import datetime
+
+start_time = datetime.now()
 
 ## Data Retrieval
 dtypes_dict = {"review": "string",
@@ -174,3 +177,5 @@ if make_prediction:
     preds = predict(vocab, train_x, train_y, test_x)
     print((f"Fold {fold} AUROC: "
            f"{roc_auc_score(test_y, y_score=preds[:, 1]):.4f}\n"))
+    
+print('Total Time (s):', (datetime.now() - start_time).total_seconds())

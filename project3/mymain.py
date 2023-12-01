@@ -88,7 +88,7 @@ def read_vocab(vocab_file="myvocab.txt"):
 
 
 if __name__ == "__main__":
-    is_submission = True  # True to submit for grading. False for testing.
+    is_submission = False  # True to submit for grading. False for testing.
     vocab = read_vocab()
     #print(f"Vocab size: {len(vocab)}")
     
