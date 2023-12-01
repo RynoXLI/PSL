@@ -8,7 +8,10 @@
 *.tsv
 !/reports/*/*.html
 /quizzes/*
+!requirements.txt
+!project4/sysI_recs.csv
 .DS_Store
 *.zip
 .RHistory
 project4/ml-1m/ml-1m/README
+__pycache__

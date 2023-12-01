@@ -18,22 +18,30 @@ UIUC Fall 2023
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(layout="wide")
+st.set_page_config(page_title="Movie Recommender",
+                   page_icon="🎥",
+                   layout="wide")
 
-sysI_recs = pd.read_csv('sysI_recs.csv')
+sysI_recs = pd.read_csv('https://raw.githubusercontent.com/RynoXLI/PSL/rf-proj4-deploy/project4/sysI_recs.csv')
 genres = sorted(sysI_recs['Genre'].unique().tolist())
 
 system = 'System I'
 with st.sidebar:
-    system = st.radio('Select a System', ['System I', 'System II'])
+    system = st.radio('Select a Page', ['Recommender by Genre', 'Recommender by Rating'])
 
 
-if system == 'System I':
-    st.title('System I: Recommendation Based on Genres')
+if system == 'Recommender by Genre':
+    st.title('Recommendations Based on Genres')
 
-    genre = st.selectbox('Select your favorite Genre:', genres)
+    genre = st.selectbox('**Select your favorite Genre**:', genres)
 
     titles = sysI_recs[sysI_recs['Genre'] == genre].reset_index().drop(columns=['MovieID', 'Genre', 'index'])
-    st.table(titles)
-elif system == 'System II':
-    st.title('System II: Recommendation Based on IBCF')
+
+    st.divider()
+    if st.button('See Recommendations'):
+        st.header('Recommendations')
+
+
+        st.dataframe(titles, hide_index=True, use_container_width=True)
+elif system == 'Recommender by Rating':
+    st.title('Recommendations based by Rating')
