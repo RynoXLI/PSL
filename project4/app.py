@@ -20,7 +20,7 @@ import pandas as pd
 
 st.set_page_config(layout="wide")
 
-sysI_recs = pd.read_csv('sysI_recs.csv')
+sysI_recs = pd.read_csv('https://raw.githubusercontent.com/RynoXLI/PSL/rf-proj4-deploy/project4/sysI_recs.csv')
 genres = sorted(sysI_recs['Genre'].unique().tolist())
 
 system = 'System I'
