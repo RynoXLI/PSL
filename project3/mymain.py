@@ -29,6 +29,20 @@ dtypes_dict = {"review": "string",
                "sentiment": "Int32"}
 
 def predict(vocab, train_x, train_y, test_x):
+    """Trains a logistic regression model with limited vocabulary on the
+       training set and predicts probability of a positive review with the test
+       set.
+
+    Args:
+        vocab (list): List of word or phrases in vocabulary
+        train_x (pandas.core.series.Series): Training set review text
+        train_y (pandas.core.series.Series): Training set class labels
+        test_x (pandas.core.series.Series): Test set review text
+
+    Returns:
+        np.ndarray: Probabilities of the test set observations being positive
+            reviews
+    """
 
     vectorizer = CountVectorizer(
         ngram_range=(1,4),
@@ -60,6 +74,15 @@ def predict(vocab, train_x, train_y, test_x):
     return preds
 
 def get_data(base_path=Path.cwd()):
+    """Retrieve the training and test data, formatted as DataFrames.
+
+    Args:
+        base_path (optional): Path of folder with training and test data.
+                              Defaults to Path.cwd().
+
+    Returns:
+        (train_x, train_y, test_x): Training and test dataframes
+    """
     path_train  = base_path / "train.tsv"
     path_test   = base_path / "test.tsv"
     
@@ -73,6 +96,14 @@ def get_data(base_path=Path.cwd()):
     return train_x, train_y, test_x
 
 def get_fold_data(fold):
+    """Retrieve the training and test data for a given fold.
+
+    Args:
+        fold (int): Fold number for training andtest data
+
+    Returns:
+        (train_x, train_y, test_x, test_y): Training and test dataframes
+    """
     fold_path = Path.cwd() / "proj3_data" / f"split_{fold}"
     train_x, train_y, test_x = get_data(base_path=fold_path)
     path_test_y = fold_path / "test_y.tsv"
@@ -81,6 +112,16 @@ def get_fold_data(fold):
     return train_x, train_y, test_x, test_y
 
 def read_vocab(vocab_file="myvocab.txt"):
+    """Reads a vocabulary file, returning a list of words or phrases.
+       
+       Each element of the list corresponds to aline of the vocabulary file.
+
+    Args:
+        vocab_file (str, optional): Vocab file path. Defaults to "myvocab.txt".
+
+    Returns:
+        list: List of vocabulary words of phrases
+    """
     vocab_path = Path.cwd() / vocab_file
     with open(vocab_path) as f:
         vocab_list = f.read().splitlines()
