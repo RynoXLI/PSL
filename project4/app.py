@@ -24,8 +24,8 @@ st.set_page_config(page_title="Movie Recommender",
                    layout="wide")
 
 sysI_recs = pd.read_csv('https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs.csv')
-s = pd.read_csv('https://raw.githubusercontent.com/RynoXLI/PSL/rf-proj4-p2/project4/similarity.csv', index_col=0)
-sysI_recs_full = pd.read_csv('https://raw.githubusercontent.com/RynoXLI/PSL/rf-proj4-p2/project4/sysI_recs_full.csv')
+s = pd.read_csv('https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/similarity.csv', index_col=0)
+sysI_recs_full = pd.read_csv('https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv')
 genres = sorted(sysI_recs['Genre'].unique().tolist())
 movies = sysI_recs_full['Title'].unique().tolist()
 title_to_mid = dict(zip(sysI_recs_full['Title'], sysI_recs_full['MovieID']))
