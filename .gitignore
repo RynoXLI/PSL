@@ -12,6 +12,8 @@
 /quizzes/*
 !requirements.txt
 !project4/sysI_recs.csv
+!project4/sysI_recs_full.csv
+!project4/similarity.csv
 .DS_Store
 *.zip
 .RHistory
