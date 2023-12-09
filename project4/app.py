@@ -19,18 +19,22 @@ import numpy as np
 import streamlit as st
 import pandas as pd
 
+
+base_url = 'https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/'
+recs_file = 'sysI_recs.csv'
+sim_file = 'similarity.csv'
+mrg_file = "movie_ratings_genre.csv"
+
 st.set_page_config(page_title="Movie Recommender", page_icon="🎥", layout="wide")
 
-sysI_recs = pd.read_csv(
-    "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs.csv"
-)
-s = pd.read_csv(
-    "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/similarity.csv",
-    index_col=0,
-)
+sysI_recs = pd.read_csv(base_url + recs_file)
+s = pd.read_csv(base_url + sim_file, index_col=0)
+mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0)
+
 sysI_recs_full = pd.read_csv(
     "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv"
 )
+
 genres = sorted(sysI_recs["Genre"].unique().tolist())
 movies = sysI_recs_full["Title"].unique().tolist()
 title_to_mid = dict(zip(sysI_recs_full["Title"], sysI_recs_full["MovieID"]))
@@ -38,12 +42,13 @@ mid_to_title = dict(zip(sysI_recs_full["MovieID"], sysI_recs_full["Title"]))
 
 
 @st.cache_data
-def myIBCF(s, newuser, sysI, num_recs=10):
-    recs = newuser.copy(deep=True)
-    recs.iloc[:] = np.nan
+def myIBCF(s, newuser, mov_rate_genre, genre_top_recs, num_recs=10):
 
+    recs = newuser.copy(deep=True).rename("PredictedRating")
+    recs.iloc[:] = np.nan
+    
     i_in_w = ~np.isnan(newuser)
-    # Compute IBCF for non-rated movies
+    # Compute predicted rating for all non-rated movies
     for l in np.arange(newuser.shape[0])[np.isnan(newuser)]:
         s_li = s.iloc[l, :]
         i_in_sl = ~np.isnan(s_li)
@@ -51,62 +56,43 @@ def myIBCF(s, newuser, sysI, num_recs=10):
         if s_li[col_mask].sum() == 0:
             continue
         recs.iloc[l] = (
-            1 / (s_li[col_mask].sum()) * np.dot(s_li[col_mask], newuser[col_mask])
+            1 / (s_li[col_mask].sum())
+            * np.dot(s_li[col_mask], newuser[col_mask])
         )
-    recs = recs[~np.isnan(recs)]
-
-    # Create mappings needed for ranking
-    mid_to_rating = dict(zip(sysI["MovieID"], sysI["WeightedRating"]))
-    mid_to_genre = dict(zip(sysI["MovieID"], sysI["Genre"]))
-    # print(f"# ratings: {np.count_nonzero(~np.isnan(newuser))}")
-    # print(f"   # recs: {recs.shape[0]}")
-    if recs.shape[0] >= num_recs:
-        # print(recs.iloc[recs.argsort().iloc[-num_recs:]])
-        rec_df = recs.iloc[recs.argsort().iloc[-num_recs:]]
-
-        # Find (mid, IBCF value, Weighted Rating from System I) pairs
-        recnames = [
-            (mid, val, mid_to_rating[int(mid[1:])])
-            for mid, val in zip(rec_df.index, rec_df.values)
-        ]
-
-        # Sort by (IBCF value, Weighted rating from System I, then mid) descending
-        recs = [
-            x[0] for x in sorted(recnames, key=lambda x: (x[1], x[2], int(x[0][1:])))
-        ][::-1]
-        return recs
+    recs = recs[~np.isnan(recs)] 
+    
+    movie_recs = mov_rate_genre.join(recs, how="inner")
+    movie_recs.sort_values(by=["PredictedRating", "WeightedRating"],
+                           axis=0, ascending=False, inplace=True)
+    if movie_recs.shape[0] >= num_recs:
+        movie_recs = movie_recs.iloc[:num_recs, :]
+        rec_movie_ids = movie_recs.index.tolist()
     else:
-        additional_recs = num_recs - recs.shape[0]
-
-        # Run through regular logic
-        rec_df = recs.iloc[recs.argsort().iloc[-num_recs:]]
-        mids = [int(mid[1:]) for mid in rec_df.index]
-        recnames = [
-            (mid, val, mid_to_rating[int(mid[1:])])
-            for mid, val in zip(rec_df.index, rec_df.values)
-        ]
-        recs = [
-            x[0] for x in sorted(recnames, key=lambda x: (x[1], x[2], int(x[0][1:])))
-        ][::-1]
-
-        # From the movies rated by the user, find the most watched genre and return top recommendations from it
-        # If there is a tie for most watched genre, then both are considered.
-        # Select the top movies by WeightedRating from System I for the given top genre(s).
-        # Make sure that the movies from the genre are not the same movies the user rated and also not already included from the IBCF recommendations.
-        rated_movies = newuser[~np.isnan(newuser)]
-        genre_mids = [int(movie[1:]) for movie in rated_movies.index]
-        genres = np.unique([mid_to_genre[mid] for mid in genre_mids])
-        mids.extend(genre_mids)
-        movie_ids = sysI[
-            sysI["Genre"].isin(genres) & ~sysI["MovieID"].isin(mids)
-        ].sort_values(by=["WeightedRating", "MovieID"], ascending=[False, True])[
-            :additional_recs
-        ][
-            "MovieID"
-        ]
-        movie_ids = [f"m{mid}" for mid in movie_ids.values]
-
-        return recs + movie_ids
+        # Begin with all available recommendations
+        rec_movie_ids = movie_recs.index.tolist()
+        
+        # Add remainding recommendations based on most rated genre
+        addl_recs = num_recs - movie_recs.shape[0]
+        
+        # Identify most-rated genre
+        rated_genres = mov_rate_genre["Genres"][~np.isnan(newuser)]
+        genre_tup = np.unique(np.concatenate(rated_genres.values),
+                              return_counts=True)
+        most_watched_genre = genre_tup[0][np.argsort(genre_tup[1])[-1]]
+        
+        # Identify highest-rated movies in this genre
+        genre_recs = genre_top_recs[
+            genre_top_recs["Genre"] == most_watched_genre]
+        
+        # Check that top movies in genre are unrated
+        genre_recs.loc[:, "MovieID"] = (
+            "m" + genre_recs.loc[:, "MovieID"].astype(str))
+        unwatched = [m not in newuser[i_in_w].index.tolist() 
+                        for m in genre_recs["MovieID"].tolist()]
+        genre_recs = genre_recs[unwatched]["MovieID"][:addl_recs].tolist()
+        
+        rec_movie_ids += genre_recs
+    return rec_movie_ids
 
 
 system = "System I"
@@ -149,9 +135,8 @@ if system == "Recommender by Genre":
                     st.metric("Weighted Rating", f"{x[3]:.2f}")
 elif system == "Recommender by Rating":
     st.title("Recommendations based by Rating")
-    st.info(
-        "Hover over the dataframe and click the (+) sign to start adding new movies with their respective ratings."
-    )
+    st.info("Hover over the dataframe and click the (+) sign to start adding"
+            " new movies with their respective ratings.")
     df = pd.DataFrame([], columns=["Movie", "Rating"])
     ratings = st.data_editor(
         df,
@@ -180,9 +165,8 @@ elif system == "Recommender by Rating":
 
     if submit and ratings.shape[0] > 0:
         if ratings["Movie"].nunique() != ratings.shape[0]:
-            st.warning(
-                "Please remove duplicate rating entries. Select the row and hit the delete key on your keyboard."
-            )
+            st.warning("Please remove duplicate rating entries. Select the row"
+                       " and hit the delete key on your keyboard.")
         else:
             st.header("Recommendations")
             new_user = s.iloc[0, :].copy(deep=True)
@@ -191,7 +175,7 @@ elif system == "Recommender by Rating":
             mids = [f"m{title_to_mid[title] }" for title in ratings["Movie"]]
             ratings = ratings["Rating"].tolist()
             new_user.loc[mids] = ratings
-            ibcf_ratings = myIBCF(s, new_user, sysI_recs_full)
+            ibcf_ratings = myIBCF(s, new_user, mov_rate_genre, sysI_recs)
 
             data = [(mid_to_title[int(mid[1:])], mid) for mid in ibcf_ratings]
             data_df = pd.DataFrame(data, columns=["Title", "MovieID"])
