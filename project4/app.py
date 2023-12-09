@@ -29,7 +29,8 @@ st.set_page_config(page_title="Movie Recommender", page_icon="🎥", layout="wid
 
 sysI_recs = pd.read_csv(base_url + recs_file)
 s = pd.read_csv(base_url + sim_file, index_col=0)
-mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0)
+mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0,
+                             converters={"Genres": pd.eval})
 
 sysI_recs_full = pd.read_csv(
     "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv"
