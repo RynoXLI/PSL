@@ -77,7 +77,13 @@ def myIBCF(s, newuser, mov_rate_genre, genre_top_recs, num_recs=10):
 def get_img(mid):
     return f"https://liangfgithub.github.io/MovieImages/{mid}.jpg?raw=true"
 
-def show_movies(title_df, num_cols=5):
+def make_rating_df(source_df, mids):
+    df = source_df.loc[mids].reset_index()
+    img_urls = df.loc[:, "MovieID"].apply(lambda x: get_img(x[1:]))
+    df = df.assign(Image = img_urls)
+    return df
+
+def show_movies(title_df, num_cols=5, get_input=False):
     """Display a grid of movies, showing the title, image, rating and number
     of ratings for each.
 
@@ -89,6 +95,7 @@ def show_movies(title_df, num_cols=5):
     num_rows = ceil(num_movies / num_cols)
     start_idx = 0
     widget_key = [None] * num_cols
+    emt = [None] * num_cols
     for _ in range(num_rows):
         idx = range(start_idx, start_idx + np.min((num_cols,
                                                    num_movies - start_idx)))
@@ -103,25 +110,42 @@ def show_movies(title_df, num_cols=5):
             cols = st.columns(num_cols)
             for i, img in enumerate(title_df.loc[idx, "Image"]):
                 cols[i].image(img)
-        with st.container():
+        with st.container():#
             cols = st.columns(num_cols)
-            for i, (rating, num_rating) in enumerate(
-                zip(title_df.loc[idx, "WeightedRating"],
+            for i, (mid, rating, num_rating) in enumerate(
+                zip(title_df.loc[idx, "MovieID"],
+                    title_df.loc[idx, "WeightedRating"],
                     title_df.loc[idx, "# of Ratings"])):
-                cols[i].radio(
-                    label=f"",
-                    options=range(1,6), index=round(rating - 1), disabled=True,
-                    horizontal=True, key=widget_key[i]
-                )
-                rating_str = (f"<center>Weighted Rating</center>"
+                if get_input:
+                    if "click-" + mid not in st.session_state:
+                        st.session_state["click-" + mid] = False
+                    emt[i] = cols[i].empty()
+                    btn = emt[i].button("Rate", key="btn-" + mid)
+                    if btn:
+                        st.session_state["click-" + mid] = True
+                    if st.session_state["click-" + mid]:
+                        emt[i].slider(
+                        label="My rating", min_value=1, max_value=5,
+                        step=1, key="rate-" + mid,
+                        value=3,
+                        disabled=False
+                    )
+                else:
+                    cols[i].slider(
+                        label="Avg. Rating", min_value=1., max_value=5.,
+                        step=1., key=mid,
+                        value=round(rating, 2),
+                        disabled=True
+                    )
+                rating_str = (
                               f"<center>{rating:.2f} / 5"
-                              f"<br>({num_rating})</center>")
+                              f"<br>({num_rating} reviews)</center>")
                 cols[i].markdown(rating_str, unsafe_allow_html=True)
-        st.write("\n\n") # spacer
+        st.write("\n\n\n") # spacer
         start_idx += num_cols
 
 def recommend_by_genre():
-    st.title("Recommendations Based on Genre")
+    st.title("Recommender by Genre")
     genre = st.selectbox("**Select your favorite Genre**:", genres)
     st.divider()
 
@@ -129,9 +153,8 @@ def recommend_by_genre():
     top_titles = sysI_recs[sysI_recs["Genre"] == genre].reset_index()
     img_urls = top_titles.loc[:, "MovieID"].apply(lambda x: get_img(x))
     top_titles = top_titles.assign(Image = img_urls)
-    top_titles = top_titles.drop(columns=["Genre", "MovieID", "AverageRating"])
     top_titles = top_titles[
-        ["Image", "Title", "WeightedRating", "# of Ratings"]]
+        ["MovieID", "Title", "WeightedRating", "# of Ratings", "Image"]]
 
     if st.button("See Recommendations"):
         st.header("Recommendations")
@@ -139,93 +162,35 @@ def recommend_by_genre():
         show_movies(top_titles)
 
 def recommend_by_rating():
-    st.title("Recommendations based by Rating")
-    st.info("Hover over the dataframe and click the (+) sign to start adding"
-            " new movies with their respective ratings.")
-    df = pd.DataFrame([], columns=["Movie", "Rating"])
-    ratings = st.data_editor(
-        df,
-        column_config={
-            "Movie": st.column_config.SelectboxColumn(
-                "Movie",
-                help="Title of the Movie to Rate",
-                options=movies,
-                required=True,
-            ),
-            "Rating": st.column_config.NumberColumn(
-                "Rating (1-5)",
-                help="The Rating of the Movie",
-                min_value=0,
-                max_value=5,
-                step=0.1,
-                required=True,
-            ),
-        },
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
-    )
+    st.title("Recommender by Rating")
+    st.info("Please rate these movies to help find recommendations.")
     st.divider()
-    submit = st.button("Find Top Movie Recommendations")
+    
+    show_movies(init_df, get_input=True)
+    st.divider()
 
-    if submit and ratings.shape[0] > 0:
-        if ratings["Movie"].nunique() != ratings.shape[0]:
-            st.warning("Please remove duplicate rating entries. Select the row"
-                       " and hit the delete key on your keyboard.")
-        else:
-            st.header("Recommendations")
-            new_user = s.iloc[0, :].copy(deep=True)
-            new_user.iloc[:] = np.nan
+    submit = st.button("Recommend some new movies")
 
-            mids = [f"m{title_to_mid[title] }" for title in ratings["Movie"]]
-            ratings = ratings["Rating"].tolist()
-            new_user.loc[mids] = ratings
-            ibcf_ratings = myIBCF(s, new_user, mov_rate_genre, sysI_recs)
+    if submit:
+        # Find which movies were rated
+        rated_keys = [x for x in list(st.session_state) if "rate" in x]
+        rated_mid = []
+        rated_val = []
+        for key in rated_keys:
+            rated_mid.append(key.split("-")[1])
+            rated_val.append(st.session_state[key])
 
-            data = [(mid_to_title[int(mid[1:])], mid) for mid in ibcf_ratings]
-            data_df = pd.DataFrame(data, columns=["Title", "MovieID"])
-            data_df["Image"] = data_df["MovieID"].apply(
-                lambda x: get_img(x[1:]))
+        # Construct rating profile
+        new_user = s.iloc[0, :].copy(deep=True)
+        new_user.iloc[:] = np.nan
+        new_user.loc[rated_mid] = rated_val
 
-            cols1 = st.columns(5)
-            st.write()
-            cols2 = st.columns(5)
-            for i, x in enumerate(data_df[["Image", "Title", "MovieID"]].itertuples()):
-                if i < 5:
-                    with cols1[i]:
-                        st.write(f"**{x[2]}**")
-                        st.image(x[1])
-                        st.metric("Rank", i + 1)
-                else:
-                    with cols2[i - 5]:
-                        st.write(f"**{x[2]}**")
-                        st.image(x[1])
-                        st.metric("Rank", i + 1)
-    elif submit and ratings.shape[0] == 0:
+        pred_mid = myIBCF(s, new_user, mov_rate_genre, sysI_recs)
+        pred_df = make_rating_df(mov_rate_genre, pred_mid)
+        
         st.header("Recommendations")
-        rankings = (
-            sysI_recs_full.sort_values(by="WeightedRating", ascending=False)[
-                ["MovieID", "Title"]
-            ]
-            .drop_duplicates()
-            .head(10)
-        )
-        rankings["Image"] = rankings["MovieID"].apply(lambda x: get_img(x))
+        show_movies(pred_df)
 
-        cols1 = st.columns(5)
-        st.write()
-        cols2 = st.columns(5)
-        for i, x in enumerate(rankings[["Image", "Title", "MovieID"]].itertuples()):
-            if i < 5:
-                with cols1[i]:
-                    st.write(f"**{x[2]}**")
-                    st.image(x[1])
-                    st.metric("Rank", i + 1)
-            else:
-                with cols2[i - 5]:
-                    st.write(f"**{x[2]}**")
-                    st.image(x[1])
-                    st.metric("Rank", i + 1)
 
 def main():
     st.set_page_config(page_title="Movie Recommender", page_icon="🎥",
@@ -250,16 +215,12 @@ sysI_recs = pd.read_csv(base_url + recs_file)
 s = pd.read_csv(base_url + sim_file, index_col=0)
 mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0,
                              converters={"Genres": pd.eval})
-sysI_recs_full = pd.read_csv(
-    "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv"
-)
+
 # Initial title suggestions
 init_url = request.urlopen(base_url + init_file).readlines()
-title_suggs = list(map(lambda x: x.decode("utf-8").strip(), init_url))
+mid_suggs = list(map(lambda x: x.decode("utf-8").strip(), init_url))
+init_df = make_rating_df(mov_rate_genre, mid_suggs)
 
 genres = sorted(sysI_recs["Genre"].unique().tolist())
-movies = sysI_recs_full["Title"].unique().tolist()
-title_to_mid = dict(zip(sysI_recs_full["Title"], sysI_recs_full["MovieID"]))
-mid_to_title = dict(zip(sysI_recs_full["MovieID"], sysI_recs_full["Title"]))
 
 main()
