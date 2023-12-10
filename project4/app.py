@@ -15,31 +15,10 @@ UIUC Fall 2023
     - seanre2@illinois.edu
     - UIN: 661791377
 """
+from math import ceil
 import numpy as np
 import streamlit as st
 import pandas as pd
-
-
-base_url = 'https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/'
-recs_file = 'sysI_recs.csv'
-sim_file = 'similarity.csv'
-mrg_file = "movie_ratings_genre.csv"
-
-st.set_page_config(page_title="Movie Recommender", page_icon="🎥", layout="wide")
-
-sysI_recs = pd.read_csv(base_url + recs_file)
-s = pd.read_csv(base_url + sim_file, index_col=0)
-mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0,
-                             converters={"Genres": pd.eval})
-
-sysI_recs_full = pd.read_csv(
-    "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv"
-)
-
-genres = sorted(sysI_recs["Genre"].unique().tolist())
-movies = sysI_recs_full["Title"].unique().tolist()
-title_to_mid = dict(zip(sysI_recs_full["Title"], sysI_recs_full["MovieID"]))
-mid_to_title = dict(zip(sysI_recs_full["MovieID"], sysI_recs_full["Title"]))
 
 
 @st.cache_data
@@ -95,46 +74,63 @@ def myIBCF(s, newuser, mov_rate_genre, genre_top_recs, num_recs=10):
         rec_movie_ids += genre_recs
     return rec_movie_ids
 
+def get_img(mid):
+    return f"https://liangfgithub.github.io/MovieImages/{mid}.jpg?raw=true"
 
-system = "System I"
-with st.sidebar:
-    system = st.radio(
-        "Select a Page", ["Recommender by Genre", "Recommender by Rating"]
-    )
+def show_movies(title_df, num_cols=5):
+    """Display a grid of movies, showing the title, image, rating and number
+    of ratings for each.
 
+    Args:
+        title_df (pandas.DatFrame): dataframe with movie, img and rating
+        num_cols (int, optional): # of columns. Defaults to 5.
+    """
+    num_movies = title_df.shape[0]
+    num_rows = ceil(num_movies / num_cols)
+    start_idx = 0
+    for _ in range(num_rows):
+        idx = range(start_idx, start_idx + np.min((num_cols,
+                                                   num_movies - start_idx)))
+        with st.container():
+            style = "<style>p {align: center;}</style>"
+            st.markdown(style, unsafe_allow_html=True)
+            cols = st.columns(num_cols)
+            for i, title in enumerate(title_df.loc[idx, "Title"]):
+                cols[i].markdown(f"<b>{title}</b>", unsafe_allow_html=True)
+        with st.container():
+            cols = st.columns(num_cols)
+            for i, img in enumerate(title_df.loc[idx, "Image"]):
+                cols[i].image(img)
+        with st.container():
+            cols = st.columns(num_cols)
+            for i, (rating, num_rating) in enumerate(
+                zip(title_df.loc[idx, "WeightedRating"],
+                    title_df.loc[idx, "# of Ratings"])):
+                rating_str = (f"<center>{rating:.2f} / 5"
+                              f"<br>({num_rating})</center>")
+                cols[i].markdown(rating_str, unsafe_allow_html=True)
+        st.write("\n\n") # spacer
+        start_idx += num_cols
 
-if system == "Recommender by Genre":
-    st.title("Recommendations Based on Genres")
-
+def recommend_by_genre():
+    st.title("Recommendations Based on Genre")
     genre = st.selectbox("**Select your favorite Genre**:", genres)
-
-    titles = sysI_recs[sysI_recs["Genre"] == genre].reset_index()
-    titles["Image"] = titles["MovieID"].apply(
-        lambda x: f"https://liangfgithub.github.io/MovieImages/{x}.jpg?raw=true"
-    )
-    titles = titles.drop(columns=["MovieID", "Genre", "index"])[
-        ["Image", "Title", "WeightedRating", "AverageRating", "# of Ratings"]
-    ]
-
     st.divider()
+
+    # Find top titles for selected genre
+    top_titles = sysI_recs[sysI_recs["Genre"] == genre].reset_index()
+    img_urls = top_titles.loc[:, "MovieID"].apply(lambda x: get_img(x))
+    top_titles = top_titles.assign(Image = img_urls)
+    top_titles = top_titles.drop(columns=["Genre", "MovieID", "AverageRating"])
+    top_titles = top_titles[
+        ["Image", "Title", "WeightedRating", "# of Ratings"]]
+
     if st.button("See Recommendations"):
         st.header("Recommendations")
+        st.write() # spacer
+        show_movies(top_titles)
 
-        cols1 = st.columns(5)
-        st.write()
-        cols2 = st.columns(5)
-        for i, x in enumerate(titles.itertuples()):
-            if i < 5:
-                with cols1[i]:
-                    st.write(f"**{x[2]}**")
-                    st.image(x[1])
-                    st.metric("Weighted Rating", f"{x[3]:.2f}")
-            else:
-                with cols2[i - 5]:
-                    st.write(f"**{x[2]}**")
-                    st.image(x[1])
-                    st.metric("Weighted Rating", f"{x[3]:.2f}")
-elif system == "Recommender by Rating":
+def recommend_by_rating():
     st.title("Recommendations based by Rating")
     st.info("Hover over the dataframe and click the (+) sign to start adding"
             " new movies with their respective ratings.")
@@ -181,8 +177,7 @@ elif system == "Recommender by Rating":
             data = [(mid_to_title[int(mid[1:])], mid) for mid in ibcf_ratings]
             data_df = pd.DataFrame(data, columns=["Title", "MovieID"])
             data_df["Image"] = data_df["MovieID"].apply(
-                lambda x: f"https://liangfgithub.github.io/MovieImages/{x[1:]}.jpg?raw=true"
-            )
+                lambda x: get_img(x[1:]))
 
             cols1 = st.columns(5)
             st.write()
@@ -207,9 +202,7 @@ elif system == "Recommender by Rating":
             .drop_duplicates()
             .head(10)
         )
-        rankings["Image"] = rankings["MovieID"].apply(
-            lambda x: f"https://liangfgithub.github.io/MovieImages/{x}.jpg?raw=true"
-        )
+        rankings["Image"] = rankings["MovieID"].apply(lambda x: get_img(x))
 
         cols1 = st.columns(5)
         st.write()
@@ -225,3 +218,37 @@ elif system == "Recommender by Rating":
                     st.write(f"**{x[2]}**")
                     st.image(x[1])
                     st.metric("Rank", i + 1)
+
+def main():
+    st.set_page_config(page_title="Movie Recommender",
+                       page_icon="🎥",
+                       layout="wide")
+    system = ""
+    with st.sidebar:
+        system = st.radio("Select a Page",
+                          ["Recommender by Genre", "Recommender by Rating"])
+
+    if system == "Recommender by Genre":
+        recommend_by_genre()
+    elif system == "Recommender by Rating":
+        recommend_by_rating()
+
+base_url = 'https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/'
+recs_file = 'sysI_recs.csv'
+sim_file = 'similarity.csv'
+mrg_file = "movie_ratings_genre.csv"
+
+sysI_recs = pd.read_csv(base_url + recs_file)
+s = pd.read_csv(base_url + sim_file, index_col=0)
+mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0,
+                            converters={"Genres": pd.eval})
+sysI_recs_full = pd.read_csv(
+    "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv"
+)
+
+genres = sorted(sysI_recs["Genre"].unique().tolist())
+movies = sysI_recs_full["Title"].unique().tolist()
+title_to_mid = dict(zip(sysI_recs_full["Title"], sysI_recs_full["MovieID"]))
+mid_to_title = dict(zip(sysI_recs_full["MovieID"], sysI_recs_full["Title"]))
+
+main()
