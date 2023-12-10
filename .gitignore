@@ -14,6 +14,7 @@
 !project4/sysI_recs.csv
 !project4/sysI_recs_full.csv
 !project4/similarity.csv
+!project4/initial_suggestions.txt
 .DS_Store
 *.zip
 .RHistory

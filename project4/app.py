@@ -15,11 +15,11 @@ UIUC Fall 2023
     - seanre2@illinois.edu
     - UIN: 661791377
 """
+import pickle
 from math import ceil
 import numpy as np
 import streamlit as st
 import pandas as pd
-
 
 @st.cache_data
 def myIBCF(s, newuser, mov_rate_genre, genre_top_recs, num_recs=10):
@@ -88,6 +88,7 @@ def show_movies(title_df, num_cols=5):
     num_movies = title_df.shape[0]
     num_rows = ceil(num_movies / num_cols)
     start_idx = 0
+    widget_key = [None] * num_cols
     for _ in range(num_rows):
         idx = range(start_idx, start_idx + np.min((num_cols,
                                                    num_movies - start_idx)))
@@ -97,6 +98,7 @@ def show_movies(title_df, num_cols=5):
             cols = st.columns(num_cols)
             for i, title in enumerate(title_df.loc[idx, "Title"]):
                 cols[i].markdown(f"<b>{title}</b>", unsafe_allow_html=True)
+                widget_key[i] = title
         with st.container():
             cols = st.columns(num_cols)
             for i, img in enumerate(title_df.loc[idx, "Image"]):
@@ -106,7 +108,13 @@ def show_movies(title_df, num_cols=5):
             for i, (rating, num_rating) in enumerate(
                 zip(title_df.loc[idx, "WeightedRating"],
                     title_df.loc[idx, "# of Ratings"])):
-                rating_str = (f"<center>{rating:.2f} / 5"
+                cols[i].radio(
+                    label=f"",
+                    options=range(1,6), index=round(rating - 1), disabled=True,
+                    horizontal=True, key=widget_key[i]
+                )
+                rating_str = (f"<center>Weighted Rating</center>"
+                              f"<center>{rating:.2f} / 5"
                               f"<br>({num_rating})</center>")
                 cols[i].markdown(rating_str, unsafe_allow_html=True)
         st.write("\n\n") # spacer
@@ -220,8 +228,7 @@ def recommend_by_rating():
                     st.metric("Rank", i + 1)
 
 def main():
-    st.set_page_config(page_title="Movie Recommender",
-                       page_icon="🎥",
+    st.set_page_config(page_title="Movie Recommender", page_icon="🎥",
                        layout="wide")
     system = ""
     with st.sidebar:
@@ -237,14 +244,18 @@ base_url = 'https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/'
 recs_file = 'sysI_recs.csv'
 sim_file = 'similarity.csv'
 mrg_file = "movie_ratings_genre.csv"
+init_file = "initial_suggestions.txt"
 
 sysI_recs = pd.read_csv(base_url + recs_file)
 s = pd.read_csv(base_url + sim_file, index_col=0)
 mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0,
-                            converters={"Genres": pd.eval})
+                             converters={"Genres": pd.eval})
 sysI_recs_full = pd.read_csv(
     "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv"
 )
+# Initial title suggestions
+with open(base_url + init_file, "r") as fp:
+    title_suggs = list(map(lambda x: x.strip(), fp.readlines()))
 
 genres = sorted(sysI_recs["Genre"].unique().tolist())
 movies = sysI_recs_full["Title"].unique().tolist()
