@@ -15,7 +15,7 @@ UIUC Fall 2023
     - seanre2@illinois.edu
     - UIN: 661791377
 """
-import pickle
+from urllib import request
 from math import ceil
 import numpy as np
 import streamlit as st
@@ -254,8 +254,8 @@ sysI_recs_full = pd.read_csv(
     "https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/sysI_recs_full.csv"
 )
 # Initial title suggestions
-with open(base_url + init_file, "r") as fp:
-    title_suggs = list(map(lambda x: x.strip(), fp.readlines()))
+init_url = request.urlopen(base_url + init_file).readlines()
+title_suggs = list(map(lambda x: x.decode("utf-8").strip(), init_url))
 
 genres = sorted(sysI_recs["Genre"].unique().tolist())
 movies = sysI_recs_full["Title"].unique().tolist()
