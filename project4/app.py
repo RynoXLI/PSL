@@ -21,9 +21,23 @@ import numpy as np
 import streamlit as st
 import pandas as pd
 
+
 @st.cache_data
 def myIBCF(s, newuser, mov_rate_genre, genre_top_recs, num_recs=10):
+    """Use item-based collaborative filtering to generate predicted ratings
+       for unrated movies.
 
+    Args:
+        s (pd.DataFrame): Filtered similarity matrix
+        newuser (pd.Series): A list of ratings for each MovieID
+        mov_rate_genre (pd.DataFrame): For each movie, the title, weighted
+            rating, # of ratings, and genres.
+        genre_top_recs (pd.DataFrame): The top 10 recommended movies per genre
+        num_recs (int, optional): # of recommendations to give. Defaults to 10.
+
+    Returns:
+        pd.DataFrame: The recommended movies
+    """
     recs = newuser.copy(deep=True).rename("PredictedRating")
     recs.iloc[:] = np.nan
     
@@ -44,6 +58,7 @@ def myIBCF(s, newuser, mov_rate_genre, genre_top_recs, num_recs=10):
     movie_recs = mov_rate_genre.join(recs, how="inner")
     movie_recs.sort_values(by=["PredictedRating", "WeightedRating"],
                            axis=0, ascending=False, inplace=True)
+    
     if movie_recs.shape[0] >= num_recs:
         movie_recs = movie_recs.iloc[:num_recs, :]
         rec_movie_ids = movie_recs.index.tolist()
@@ -74,14 +89,35 @@ def myIBCF(s, newuser, mov_rate_genre, genre_top_recs, num_recs=10):
         rec_movie_ids += genre_recs
     return rec_movie_ids
 
+
 def get_img(mid):
+    """Get the URL for the cover image of a movie, given its MovieID
+
+    Args:
+        mid (str): MovieID
+
+    Returns:
+        str: Image URL
+    """
     return f"https://liangfgithub.github.io/MovieImages/{mid}.jpg?raw=true"
 
+
 def make_rating_df(source_df, mids):
+    """Produce a dataframe with movie, title, rating, genre and image data for
+       the provided set of MovieIDs
+
+    Args:
+        source_df (pd.DataFrame): movie, title, rating and genre dataframe
+        mids (list): list of MovieIDs
+
+    Returns:
+        pd.DataFrame: Filtered dataframe with image data
+    """
     df = source_df.loc[mids].reset_index()
     img_urls = df.loc[:, "MovieID"].apply(lambda x: get_img(x[1:]))
     df = df.assign(Image = img_urls)
     return df
+
 
 def show_movies(title_df, num_cols=5, get_input=False):
     """Display a grid of movies, showing the title, image, rating and number
@@ -96,9 +132,12 @@ def show_movies(title_df, num_cols=5, get_input=False):
     start_idx = 0
     widget_key = [None] * num_cols
     emt = [None] * num_cols
+
     for _ in range(num_rows):
-        idx = range(start_idx, start_idx + np.min((num_cols,
-                                                   num_movies - start_idx)))
+        idx = range(start_idx,
+                    start_idx + np.min((num_cols, num_movies - start_idx)))
+        
+        # Row with titles
         with st.container():
             style = "<style>p {align: center;}</style>"
             st.markdown(style, unsafe_allow_html=True)
@@ -106,21 +145,28 @@ def show_movies(title_df, num_cols=5, get_input=False):
             for i, title in enumerate(title_df.loc[idx, "Title"]):
                 cols[i].markdown(f"<b>{title}</b>", unsafe_allow_html=True)
                 widget_key[i] = title
+
+        # Row with images
         with st.container():
             cols = st.columns(num_cols)
             for i, img in enumerate(title_df.loc[idx, "Image"]):
                 cols[i].image(img)
+
+        # Row with rating data and input
         with st.container():#
             cols = st.columns(num_cols)
             for i, (mid, rating, num_rating) in enumerate(
                 zip(title_df.loc[idx, "MovieID"],
                     title_df.loc[idx, "WeightedRating"],
                     title_df.loc[idx, "# of Ratings"])):
+                
+                # First show "Rate" button. Replace with slider if clicked
                 if get_input:
                     if "click-" + mid not in st.session_state:
                         st.session_state["click-" + mid] = False
                     emt[i] = cols[i].empty()
-                    btn = emt[i].button("Rate", key="btn-" + mid)
+                    btn = emt[i].button("Rate", key="btn-" + mid,
+                                        use_container_width=True)
                     if btn:
                         st.session_state["click-" + mid] = True
                     if st.session_state["click-" + mid]:
@@ -130,12 +176,12 @@ def show_movies(title_df, num_cols=5, get_input=False):
                         value=3,
                         disabled=False
                     )
+                # Show disabled slider with average rating
                 else:
                     cols[i].slider(
                         label="Avg. Rating", min_value=1., max_value=5.,
-                        step=1., key=mid,
-                        value=round(rating, 2),
-                        disabled=True
+                        step=1., key=mid, value=round(rating, 2),
+                        disabled=True, format="%g"
                     )
                 rating_str = (
                               f"<center>{rating:.2f} / 5"
@@ -144,7 +190,11 @@ def show_movies(title_df, num_cols=5, get_input=False):
         st.write("\n\n\n") # spacer
         start_idx += num_cols
 
+
 def recommend_by_genre():
+    """System I: Ask for an input genre and suggest a set of top movies from
+       that genre
+    """
     st.title("Recommender by Genre")
     genre = st.selectbox("**Select your favorite Genre**:", genres)
     st.divider()
@@ -161,11 +211,15 @@ def recommend_by_genre():
         st.write() # spacer
         show_movies(top_titles)
 
+
 def recommend_by_rating():
+    """System II: Present a set of initial movies and ask the user to rate
+       them. Then, with their ratings, suggest the set of unrated movies that
+       have the highest predicted rating by item-based collaborative filtering
+    """
     st.title("Recommender by Rating")
     st.info("Please rate these movies to help find recommendations.")
     st.divider()
-    
     show_movies(init_df, get_input=True)
     st.divider()
 
@@ -188,11 +242,12 @@ def recommend_by_rating():
         pred_mid = myIBCF(s, new_user, mov_rate_genre, sysI_recs)
         pred_df = make_rating_df(mov_rate_genre, pred_mid)
         
-        st.header("Recommendations")
+        st.header("Recommended movies")
         show_movies(pred_df)
 
 
 def main():
+    """Streamlit web application entry point"""
     st.set_page_config(page_title="Movie Recommender", page_icon="🎥",
                        layout="wide")
     system = ""
@@ -205,22 +260,28 @@ def main():
     elif system == "Recommender by Rating":
         recommend_by_rating()
 
+# Download initial recommendations and movie data to improve performance
 base_url = 'https://raw.githubusercontent.com/RynoXLI/PSL/main/project4/'
 recs_file = 'sysI_recs.csv'
 sim_file = 'similarity.csv'
 mrg_file = "movie_ratings_genre.csv"
 init_file = "initial_suggestions.txt"
 
-sysI_recs = pd.read_csv(base_url + recs_file)
-s = pd.read_csv(base_url + sim_file, index_col=0)
+# DataFrame to lookup Movie, title, genre and rating data
 mov_rate_genre = pd.read_csv(base_url + mrg_file, index_col=0,
                              converters={"Genres": pd.eval})
 
-# Initial title suggestions
+# Initial genre recommendations for System I
+sysI_recs = pd.read_csv(base_url + recs_file)
+genres = sorted(sysI_recs["Genre"].unique().tolist())
+
+# Similarity matrix for System II
+s = pd.read_csv(base_url + sim_file, index_col=0)
+
+
+# Initial title suggestions for System II
 init_url = request.urlopen(base_url + init_file).readlines()
 mid_suggs = list(map(lambda x: x.decode("utf-8").strip(), init_url))
 init_df = make_rating_df(mov_rate_genre, mid_suggs)
-
-genres = sorted(sysI_recs["Genre"].unique().tolist())
 
 main()
