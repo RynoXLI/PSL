@@ -218,7 +218,12 @@ def recommend_by_rating():
        have the highest predicted rating by item-based collaborative filtering
     """
     st.title("Recommender by Rating")
-    st.info("Please rate these movies to help find recommendations.")
+    st.info(
+        ("Please rate these movies to help find recommendations.\n\n"
+         "To enter a rating for a movie, first press the 'Rate' button below "
+         "the title to reveal a rating slider and enter your rating.\n\n"
+         "When all of your ratings are input, press the 'Recommend some new "
+         "movies' button below to show the recommendations."))
     st.divider()
     show_movies(init_df, get_input=True)
     st.divider()
