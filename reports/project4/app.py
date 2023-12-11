@@ -230,7 +230,7 @@ def recommend_by_rating():
 
     submit = st.button("Recommend some new movies")
 
-    if submit:
+    if submit and len([x for x in list(st.session_state) if "rate" in x]) > 0:
         # Find which movies were rated
         rated_keys = [x for x in list(st.session_state) if "rate" in x]
         rated_mid = []
